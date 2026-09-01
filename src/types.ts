@@ -12,6 +12,11 @@ export interface Env {
   CF_ACCOUNT_ID?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CF_ACCOUNT_SUBDOMAIN?: string;
+
+  // Optional model override for the agent's tool-calling loop.
+  // Defaults to @cf/ibm-granite/granite-4.0-h-micro (see agent.ts).
+  // Verified-compatible alternative: @cf/qwen/qwen3-30b-a3b-fp8.
+  MODEL?: string;
 }
 
 // ─── Workspace DO RPC interface ─────────────────────────────────────────────

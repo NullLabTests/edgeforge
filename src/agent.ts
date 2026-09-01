@@ -81,7 +81,7 @@ export async function runAgentLoop(
     // stays demoable end-to-end.
     let response: LLMResponse;
     try {
-      response = await callLLM(env.AI, messages, toolDefs);
+      response = await callLLM(env, messages, toolDefs);
     } catch (err) {
       const errObj = err as { name?: string; message?: string; cause?: unknown; stack?: string };
       logger.warn("AI binding unavailable, using offline template builder", {
@@ -183,15 +183,16 @@ interface LLMResponse {
 }
 
 async function callLLM(
-  ai: Ai,
+  env: Env,
   messages: Array<{ role: string; content?: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }>,
   tools: unknown[],
 ): Promise<LLMResponse> {
   // Use Granite 4.0 Micro — cheapest function-calling model on Workers AI
   // ~1,542 neurons/M input, ~10,158 neurons/M output
-  const model = "@cf/ibm-granite/granite-4.0-h-micro";
+  // Override with env.MODEL (verified-compatible: @cf/qwen/qwen3-30b-a3b-fp8).
+  const model = env.MODEL || "@cf/ibm-granite/granite-4.0-h-micro";
 
-  const result = await (ai.run as (model: string, inputs: Record<string, unknown>, options?: Record<string, unknown>) => Promise<Record<string, unknown>>)(
+  const result = await (env.AI.run as (model: string, inputs: Record<string, unknown>, options?: Record<string, unknown>) => Promise<Record<string, unknown>>)(
     model,
     { messages, tools },
     {},

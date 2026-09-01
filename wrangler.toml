@@ -48,3 +48,6 @@ binding = "ASSETS"
 # Worker so they never reach the repo.
 [vars]
 CF_ACCOUNT_SUBDOMAIN = "creatorplntu"
+# Agent model for the tool-calling loop. Granite 4.0 Micro is the free-tier
+# default; switch to @cf/qwen/qwen3-30b-a3b-fp8 to run the agent on Qwen.
+MODEL = "@cf/ibm-granite/granite-4.0-h-micro"

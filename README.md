@@ -47,8 +47,9 @@ approval in the middle:
 </p>
 
 *If your viewer doesn't animate SVG, open [`docs/edgeforge-demo.svg`](docs/edgeforge-demo.svg)
-directly — or, if the full HD recording has been rendered, watch it at
-[`docs/video/edgeforge-walkthrough.mp4`](docs/video/edgeforge-walkthrough.mp4).*
+directly — or watch the recorded end-to-end walkthroughs
+([Granite](docs/video/edgeforge-walkthrough-granite.mp4) ·
+[Qwen3-30B](docs/video/edgeforge-walkthrough-qwen.mp4)).*
 
 ---
 
@@ -86,11 +87,14 @@ is running right now on a free account. End-to-end runs were verified live:
 |---|---|---|
 | **EdgeForge platform** (this repo, live) | https://edgeforge.creatorplntu.workers.dev | ✅ serving API + UI |
 | **Agent-built worker, Gatekeeper-deployed** | https://zerohour.creatorplntu.workers.dev | ✅ live, returns `{"app":"zero"}` |
+| **Built by the Granite agent** (video take) | https://videodemo.creatorplntu.workers.dev | ✅ live, returns `{"message":"Hello from EdgeForge!"}` |
+| **Built by the Qwen3-30B agent** (video take) | https://qwen-demo.creatorplntu.workers.dev | ✅ live, returns `{"message":"Hello from EdgeForge!"}` |
 
-The `zerohour` worker was **not** written by hand. A prompt asked the agent to build it; the
-agent wrote `/src/index.js` and a `wrangler.jsonc` into the durable filesystem; the
-Gatekeeper queued it; a human approved it; and the Worker went live. The audit trail for
-`deploy.request → deploy.approved` is inspectable through the API.
+The `zerohour`, `videodemo`, and `qwen-demo` workers were **not** written by hand. A prompt
+asked the agent to build each; the agent wrote `/src/index.js` into the durable filesystem;
+the Gatekeeper queued it; a human approved it; and the Worker went live. The audit trail for
+`deploy.request → deploy.approved` is inspectable through the API — and the walkthrough
+videos below show it happen end to end.
 
 ---
 
@@ -258,7 +262,7 @@ edgeforge/
 ├── docs/
 │   ├── edgeforge-demo.svg      # animated pipeline diagram
 │   ├── cloudflare-logo.svg     # official logo (see Trademark & attribution)
-│   └── video/                  # walkthrough video ships here (edgeforge-walkthrough.mp4)
+│   └── video/                  # walkthrough MP4s (Granite + Qwen3-30B takes)
 ├── test/                 # Vitest (26 tests)
 └── wrangler.toml         # worker config: DO, AI, KV, assets, subdomain
 ```
@@ -295,12 +299,23 @@ npx wrangler deploy --dry-run   # bundle check for the platform worker
 
 ## Video walkthrough
 
-A guided walkthrough **will ship at `docs/video/edgeforge-walkthrough.mp4`** — booting from
-a fresh prompt, watching the agent work through `wrangler tail`, reviewing the queue,
-approving, and hitting the live URL. A short GIF/MP4 lead clip gets embedded above in the
-animated section; the full HD recording lives alongside the repo.
+Recorded against the **live** instance — a fresh browser session, real agent runs on
+Workers AI, the approval queue, a real Gatekeeper upload, and the resulting live URL.
+Both takes use the **same prompt**; only the model differs.
 
-*(Slot reserved — render & commit the video, then it appears automatically.)*
+- **Granite 4.0 Micro** →
+  [`docs/video/edgeforge-walkthrough-granite.mp4`](docs/video/edgeforge-walkthrough-granite.mp4)
+  *(deploys `videodemo.creatorplntu.workers.dev`)*
+- **Qwen3 30B (A3B, FP8)** →
+  [`docs/video/edgeforge-walkthrough-qwen.mp4`](docs/video/edgeforge-walkthrough-qwen.mp4)
+  *(deploys `qwen-demo.creatorplntu.workers.dev`)*
+
+Each clip: boot the UI → type the prompt → watch the agent work (`wrangler tail` in a side
+panel) → review the file tree → review the approval queue → click **Approve** → the new
+Worker is reachable at its `workers.dev` URL.
+
+*The model is configurable via the `MODEL` variable on the Worker
+(`@cf/ibm-granite/granite-4.0-h-micro` default, `@cf/qwen/qwen3-30b-a3b-fp8` verified).*
 
 ---
 
@@ -308,7 +323,8 @@ animated section; the full HD recording lives alongside the repo.
 
 - **R2-backed artifacts** on accounts where R2 is enabled (uploads today use KV fallback).
 - **Zone-custom-domain deploys** for accounts with a domain attached.
-- **More agents / models** — swap `granite-4.0-h-micro` for larger models up to the plan.
+- **Swappable agent models** — set `MODEL` (`granite-4.0-h-micro` default; see the two
+  walkthrough videos). Larger models cost more against the free 10K neurons/day budget.
 - **Real containers behind the paywall boundary** — the natural enterprise add-on.
 - **Persistence of approved deploys** into Git for a single source of truth.
 
