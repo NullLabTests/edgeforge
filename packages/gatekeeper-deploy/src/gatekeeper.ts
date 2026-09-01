@@ -231,8 +231,7 @@ async function tryUploadWorkersScript(
 
   const form = new FormData();
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-  const moduleType = moduleName.endsWith(".wasm") ? "application/wasm" : "application/javascript+module";
-  form.append(moduleName, new Blob([files[entryPath]], { type: moduleType }));
+  form.append(moduleName, new Blob([files[entryPath]], { type: "text/typescript" }));
 
   const url = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/scripts/${encodeURIComponent(scriptName)}`;
 
@@ -257,14 +256,6 @@ async function tryUploadWorkersScript(
     const detail = body?.errors?.map((e) => `${e.code}: ${e.message}`).join("; ") || res.statusText;
     return { success: false, selfUrl, reason: "api", error: `Upload rejected (${res.status}): ${detail}` };
   }
-
-  // The Upload API does not auto-enable workers.dev routing the way `wrangler deploy`
-  // does, so flip it on explicitly so the new script is reachable at a live URL.
-  await fetch(`${url}/subdomain`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled: true }),
-  }).catch(() => {});
 
   const subdomain = body?.result?.workers_dev?.subdomain;
   const url2 = subdomain ? `https://${scriptName}.${subdomain}.workers.dev` : undefined;

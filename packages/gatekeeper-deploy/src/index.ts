@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import * as gatekeeper from "../../src/gatekeeper.js";
-import type { Env } from "../../src/types.js";
-import { createLogger } from "../../src/logger.js";
+import * as gatekeeper from "./gatekeeper.js";
+import type { Env } from "./types.js";
+import { createLogger } from "./logger.js";
 
 const logger = createLogger("gatekeeper-service");
 

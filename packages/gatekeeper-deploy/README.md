@@ -4,8 +4,9 @@ The **Deploy Gatekeeper** shipped as its own Worker. This is the only component
 with the ability to write code to your Cloudflare account, mirroring how
 Cloudflare OS ships Gatekeepers as independent, capability-scoped Workers.
 
-Shared logic lives in `../../src/gatekeeper.ts`, so the platform worker and this
-service cannot drift apart.
+The core logic (`gatekeeper.ts`, `types.ts`, `logger.ts`) is kept here as a
+self-contained mirror of `../../src/gatekeeper.ts`, so this service can be
+deployed entirely independently on the free tier.
 
 ## API (`/rpc/*`)
 

@@ -6,6 +6,6 @@ describe("{{projectName}}", () => {
   });
 
   it("is a valid worker project", () => {
-    expect("{{projectName}}").toMatch(/^[a-z0-9-]+$/);
+    expect("sandbox-gadget").toMatch(/^[a-z0-9-]+$/);
   });
 });

@@ -25,11 +25,11 @@ binding = "AI"
 # Both bindings may share one namespace; budget keys are namespaced under `budget:`.
 [[kv_namespaces]]
 binding = "APPROVALS"
-id = "<your-kv-namespace-id>"
+id = "605e09bc35b54d6e8d2ac9c3a22a51d3"
 
 [[kv_namespaces]]
 binding = "BUDGET"
-id = "<your-kv-namespace-id>"
+id = "7d7ebe28874743588b71c1641ddfe73d"
 
 # R2 for artifacts — enable in the dashboard, then uncomment to use R2
 # [[r2_buckets]]
@@ -41,11 +41,10 @@ id = "<your-kv-namespace-id>"
 directory = "frontend/dist"
 binding = "ASSETS"
 
-# ── Optional: real (not simulated) deploys ────────────────────────────────────
-# To turn approvals into LIVE workers on your account, set these as secrets
-# (`npx wrangler secret put CF_ACCOUNT_ID`, `... CLOUDFLARE_API_TOKEN`) with a
-# free-tier token scoped to "Workers Scripts: Edit". Without them the Gatekeeper
-# packages an archive instead.
-#
-# [vars]
-# CF_ACCOUNT_SUBDOMAIN = "your-account-subdomain"
+# ── Real (not simulated) deploys ──────────────────────────────────────────────
+# Approvals are turned into LIVE workers via the Workers Upload API. The
+# subdomain below is from this account (`wrangler login` → Workers API).
+# CF_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are set as secrets on the deployed
+# Worker so they never reach the repo.
+[vars]
+CF_ACCOUNT_SUBDOMAIN = "creatorplntu"
