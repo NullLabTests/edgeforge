@@ -1,0 +1,37 @@
+name = "devforge"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Objects (modern exports syntax, SQLite storage)
+[durable_objects]
+bindings = [
+  { name = "WORKSPACE", class_name = "WorkspaceDO" }
+]
+
+[[durable_objects.migrations]]
+tag = "v1"
+new_sqlite_classes = ["WorkspaceDO"]
+
+[exports.WorkspaceDO]
+type = "durable-object"
+storage = "sqlite"
+
+# Workers AI
+[ai]
+binding = "AI"
+
+# KV for approval queue + artifact fallback (free tier)
+[[kv_namespaces]]
+binding = "APPROVALS"
+id = "d4b21b60124044eca2f1d62a9cfd9d27"
+
+# R2 for artifacts — enable in the dashboard, then uncomment to use R2
+# [[r2_buckets]]
+# binding = "ARTIFACTS"
+# bucket_name = "devforge-artifacts"
+
+# Static assets (frontend)
+[assets]
+directory = "frontend/dist"
+binding = "ASSETS"
