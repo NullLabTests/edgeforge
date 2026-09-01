@@ -1,6 +1,6 @@
-name = "devforge"
+name = "edgeforge"
 main = "src/index.ts"
-compatibility_date = "2024-12-01"
+compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
 # Durable Objects (modern exports syntax, SQLite storage)
@@ -21,17 +21,31 @@ storage = "sqlite"
 [ai]
 binding = "AI"
 
-# KV for approval queue + artifact fallback (free tier)
+# KV for the deploy approval queue, artifact fallback, and the AI budget ledger.
+# Both bindings may share one namespace; budget keys are namespaced under `budget:`.
 [[kv_namespaces]]
 binding = "APPROVALS"
-id = "d4b21b60124044eca2f1d62a9cfd9d27"
+id = "<your-kv-namespace-id>"
+
+[[kv_namespaces]]
+binding = "BUDGET"
+id = "<your-kv-namespace-id>"
 
 # R2 for artifacts — enable in the dashboard, then uncomment to use R2
 # [[r2_buckets]]
 # binding = "ARTIFACTS"
-# bucket_name = "devforge-artifacts"
+# bucket_name = "edgeforge-artifacts"
 
 # Static assets (frontend)
 [assets]
 directory = "frontend/dist"
 binding = "ASSETS"
+
+# ── Optional: real (not simulated) deploys ────────────────────────────────────
+# To turn approvals into LIVE workers on your account, set these as secrets
+# (`npx wrangler secret put CF_ACCOUNT_ID`, `... CLOUDFLARE_API_TOKEN`) with a
+# free-tier token scoped to "Workers Scripts: Edit". Without them the Gatekeeper
+# packages an archive instead.
+#
+# [vars]
+# CF_ACCOUNT_SUBDOMAIN = "your-account-subdomain"

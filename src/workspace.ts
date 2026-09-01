@@ -4,6 +4,7 @@ import type { Env, DirEntry, GrepResult, FileTreeNode, AgentResult, DeployReques
 import { runAgentLoop } from "./agent.js";
 import { ensureParentDirs } from "./fs-helpers.js";
 import { simulateExec } from "./exec-sim.js";
+import { requestDeploy as gatekeeperRequestDeploy, listDeployments as gatekeeperListDeployments } from "./gatekeeper.js";
 
 // ─── Workspace Durable Object ───────────────────────────────────────────────
 // Wraps @cloudflare/computer Workspace for virtual filesystem + agent execution.
@@ -78,28 +79,8 @@ export class WorkspaceDO extends DurableObject<Env> {
 
   async requestDeploy(projectName: string): Promise<DeployRequest> {
     const ws = await this.ensureWorkspace();
-    const deployId = crypto.randomUUID();
-
-    // Collect all files from the workspace
     const files = await this.collectAllFiles(ws, "/");
-
-    // Store deploy request in KV
-    const request: DeployRequest = {
-      deployId,
-      projectName,
-      status: "pending",
-      fileCount: Object.keys(files).length,
-      createdAt: Date.now(),
-      simulatedUrl: `https://${projectName}.devforge.workers.dev`,
-    };
-
-    await this.env.APPROVALS.put(
-      `deploy:${deployId}`,
-      JSON.stringify({ ...request, files }),
-      { expirationTtl: 86400 } // 24h TTL
-    );
-
-    return request;
+    return gatekeeperRequestDeploy(this.env, { projectName, files, requestedBy: "user" });
   }
 
   async getDeployStatus(deployId: string): Promise<DeployStatus> {
@@ -109,18 +90,7 @@ export class WorkspaceDO extends DurableObject<Env> {
   }
 
   async listDeployments(): Promise<DeployStatus[]> {
-    const list = await this.env.APPROVALS.list({ prefix: "deploy:" });
-    const deployments: DeployStatus[] = [];
-    for (const key of list.keys) {
-      const data = await this.env.APPROVALS.get(key.name);
-      if (data) {
-        const deploy = JSON.parse(data);
-        // Don't include the full files array in the list
-        const { files, ...status } = deploy;
-        deployments.push(status);
-      }
-    }
-    return deployments.sort((a, b) => b.createdAt - a.createdAt);
+    return gatekeeperListDeployments(this.env);
   }
 
   // ─── File Tree for UI ─────────────────────────────────────────────────────

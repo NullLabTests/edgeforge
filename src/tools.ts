@@ -1,6 +1,7 @@
 import type { Workspace } from "@cloudflare/computer";
 import type { Env, ToolCall, ToolResult, ExecResult } from "./types.js";
 import { simulateExec } from "./exec-sim.js";
+import { requestDeploy as gatekeeperRequestDeploy } from "./gatekeeper.js";
 import { ensureParentDirs } from "./fs-helpers.js";
 import { createLogger } from "./logger.js";
 
@@ -243,35 +244,14 @@ export async function executeTool(
 
       case "deploy": {
         const projectName = call.arguments.projectName as string || "my-worker";
-        const deployId = crypto.randomUUID();
-
-        // Snapshot all workspace files
         const files = await collectAllFiles(workspace, "/");
-
-        const request = {
-          deployId,
-          projectName,
-          status: "pending",
-          fileCount: Object.keys(files).length,
-          createdAt: Date.now(),
-          simulatedUrl: `https://${projectName}.devforge.workers.dev`,
-          files,
-        };
-
-        await env.APPROVALS.put(
-          `deploy:${deployId}`,
-          JSON.stringify(request),
-          { expirationTtl: 86400 }
-        );
-
-        logger.info("Deploy requested via agent tool", { event: "deploy.request.agent", deployId, projectName });
-
+        const request = await gatekeeperRequestDeploy(env, { projectName, files, requestedBy: "agent" });
         content = JSON.stringify({
           success: true,
-          message: "Deploy request queued for user approval. The agent continues working in the background.",
-          deployId,
-          projectName,
-          fileCount: Object.keys(files).length,
+          message: `Deploy request ${request.deployId} queued for user approval. The agent keeps working; the deploy is applied only after a human approves in the UI. Live URL will be ${request.simulatedUrl}.`,
+          deployId: request.deployId,
+          projectName: request.projectName,
+          fileCount: request.fileCount,
           simulatedUrl: request.simulatedUrl,
         });
         break;

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Chat } from "./Chat.js";
 import { FileTree } from "./FileTree.js";
 import { ApprovalQueue } from "./ApprovalQueue.js";
@@ -9,12 +9,66 @@ interface AgentResult {
   iterations: number;
   filesWritten: string[];
   neuronsUsed: number;
+  budget?: { remaining: number; used: number; limit: number };
+}
+
+interface BudgetInfo {
+  used: number;
+  remaining: number;
+  limit: number;
+}
+
+function useBudget() {
+  const [budget, setBudget] = useState<BudgetInfo | null>(null);
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/budget");
+      if (res.ok) setBudget(await res.json());
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  return { budget, refresh: load };
+}
+
+function BudgetMeter({ budget }: { budget: BudgetInfo | null }) {
+  if (!budget) return null;
+  const pct = Math.min(100, (budget.used / budget.limit) * 100);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ fontSize: "11px", color: "#888" }}>
+        {budget.used.toLocaleString()} / {budget.limit.toLocaleString()} neurons today
+      </div>
+      <div style={{
+        width: 80,
+        height: 6,
+        borderRadius: 3,
+        background: "#222",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          width: `${pct}%`,
+          height: "100%",
+          background: pct > 85 ? "#dc2626" : pct > 60 ? "#f59e0b" : "#22c55e",
+          transition: "width 0.4s",
+        }} />
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
   const [fileTreeRefresh, setFileTreeRefresh] = useState(0);
   const [lastResult, setLastResult] = useState<AgentResult | null>(null);
   const [activeTab, setActiveTab] = useState<"chat" | "files" | "approvals">("chat");
+  const { budget } = useBudget();
 
   const handleAgentResult = useCallback((result: AgentResult) => {
     setLastResult(result);
@@ -31,20 +85,24 @@ export default function App() {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
+        gap: "16px",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <h1 style={{ fontSize: "18px", fontWeight: 600, color: "#f97316" }}>
-            DevForge
+            EdgeForge
           </h1>
           <span style={{ fontSize: "12px", color: "#666" }}>
-            AI Development Agent — Free Tier
+            AI dev sandbox at the edge — Cloudflare free tier
           </span>
         </div>
-        {lastResult && (
-          <div style={{ fontSize: "12px", color: "#888" }}>
-            {lastResult.filesWritten.length} files · {lastResult.iterations} iterations · {lastResult.neuronsUsed} neurons
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+          {lastResult && (
+            <div style={{ fontSize: "12px", color: "#888" }}>
+              {lastResult.filesWritten.length} files · {lastResult.iterations} iters · {lastResult.neuronsUsed} neurons
+            </div>
+          )}
+          <BudgetMeter budget={budget} />
+        </div>
       </header>
 
       {/* Tab Bar */}
@@ -97,8 +155,8 @@ export default function App() {
         display: "flex",
         justifyContent: "space-between",
       }}>
-        <span>Workers AI: Granite 4.0 Micro (free tier)</span>
-        <span>@cloudflare/computer filesystem mode</span>
+        <span>Workers AI · Granite 4.0 Micro · 10K neurons/day</span>
+        <span>@cloudflare/computer filesystem · Durable Objects (SQLite) · Gatekeeper approvals</span>
       </footer>
     </div>
   );

@@ -1,0 +1,29 @@
+{
+  "name": "AI Dev Sandbox",
+  "description": "A sandboxed development environment where an AI agent builds, tests, and deploys Cloudflare Workers from a natural-language prompt — with human-in-the-loop approval for anything that touches the internet.",
+  "version": "1.0.0",
+  "gadget": {
+    "type": "dynamic-worker",
+    "runtime": "workerd",
+    "bindings": [
+      { "type": "ai", "name": "AI" },
+      { "type": "r2", "name": "ARTIFACTS", "bucket": "edgeforge-artifacts", "optional": true },
+      { "type": "kv", "name": "APPROVALS" },
+      { "type": "kv", "name": "BUDGET" }
+    ],
+    "permissions": {
+      "internet": false,
+      "filesystem": "sandboxed"
+    }
+  },
+  "agent": {
+    "model": "@cf/ibm-granite/granite-4.0-h-micro",
+    "neuronsPerDay": 10000,
+    "tools": ["write", "read", "edit", "ls", "find", "grep", "delete", "exec", "deploy"],
+    "maxIterations": 20,
+    "maxFixRetries": 3,
+    "systemPrompt": "You are EdgeForge, an AI development agent. Plan, write files to a virtual filesystem, run tests, fix failures (max 3 retries), then request deploy through the deploy tool. Never deploy untested code."
+  },
+  "gatekeepers": ["deploy"],
+  "template": "template/"
+}

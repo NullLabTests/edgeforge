@@ -8,6 +8,8 @@ interface Deployment {
   createdAt: number;
   simulatedUrl: string;
   deployedUrl?: string;
+  deployMode?: "real" | "archive";
+  error?: string;
 }
 
 export function ApprovalQueue() {
@@ -100,7 +102,7 @@ export function ApprovalQueue() {
             marginBottom: "12px",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
             <div>
               <div style={{ fontSize: "14px", fontWeight: 600, color: "#e0e0e0" }}>
                 {deploy.projectName}
@@ -109,8 +111,27 @@ export function ApprovalQueue() {
                 {deploy.fileCount} files · {new Date(deploy.createdAt).toLocaleString()}
               </div>
             </div>
-            <StatusBadge status={deploy.status} />
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              {deploy.deployMode && (
+                <ModeBadge mode={deploy.deployMode} />
+              )}
+              <StatusBadge status={deploy.status} />
+            </div>
           </div>
+
+          {deploy.error && (
+            <div style={{
+              marginTop: "8px",
+              padding: "8px 12px",
+              background: "#2a0a0a",
+              border: "1px solid #7f1d1d",
+              borderRadius: "4px",
+              fontSize: "11px",
+              color: "#fca5a5",
+            }}>
+              {deploy.error}
+            </div>
+          )}
 
           {deploy.deployedUrl && (
             <div style={{
@@ -192,6 +213,23 @@ function StatusBadge({ status }: { status: string }) {
       color: c.text,
     }}>
       {status}
+    </span>
+  );
+}
+
+function ModeBadge({ mode }: { mode: "real" | "archive" }) {
+  const real = mode === "real";
+  return (
+    <span style={{
+      padding: "2px 8px",
+      borderRadius: "12px",
+      fontSize: "11px",
+      fontWeight: 600,
+      background: real ? "#052e16" : "#111827",
+      border: `1px solid ${real ? "#16a34a" : "#4b5563"}`,
+      color: real ? "#4ade80" : "#9ca3af",
+    }}>
+      {real ? "Live" : "Archive"}
     </span>
   );
 }

@@ -3,6 +3,8 @@ import { cors } from "hono/cors";
 import { WorkspaceDO } from "./workspace.js";
 import type { Env } from "./types.js";
 import { createLogger } from "./logger.js";
+import * as gatekeeper from "./gatekeeper.js";
+import { getNeuronBudget } from "./budget.js";
 
 const logger = createLogger("worker");
 
@@ -15,7 +17,7 @@ app.use("/*", cors());
 // ─── Health Check ───────────────────────────────────────────────────────────
 
 app.get("/api/health", (c) => {
-  return c.json({ status: "ok", version: "0.1.0" });
+  return c.json({ status: "ok", version: "0.2.0", name: "edgeforge" });
 });
 
 // ─── Workspace API ──────────────────────────────────────────────────────────
@@ -25,46 +27,6 @@ type WorkspaceStub = DurableObjectStub<InstanceType<typeof WorkspaceDO>>;
 function getWorkspaceStub(env: Env, userId: string = "default"): WorkspaceStub {
   const id = env.WORKSPACE.idFromName(`workspace:${userId}`);
   return env.WORKSPACE.get(id) as WorkspaceStub;
-}
-
-// ─── Artifact Storage ────────────────────────────────────────────────────────
-// Deploy artifacts normally live in R2. When the account hasn't enabled R2 yet
-// (free-tier opt-in), fall back to KV so the demo still works end-to-end.
-
-async function storeArtifact(
-  env: Env,
-  deployId: string,
-  path: string,
-  content: string,
-  contentType: string,
-): Promise<void> {
-  if (env.ARTIFACTS) {
-    await env.ARTIFACTS.put(`deploys/${deployId}${path}`, content, {
-      httpMetadata: { contentType },
-    });
-  } else {
-    await env.APPROVALS.put(
-      `artifact:${deployId}${path}`,
-      JSON.stringify({ content, contentType }),
-      { expirationTtl: 86400 * 7 },
-    );
-  }
-}
-
-async function getArtifact(
-  env: Env,
-  deployId: string,
-  path: string,
-): Promise<{ content: string; contentType: string } | null> {
-  if (env.ARTIFACTS) {
-    const object = await env.ARTIFACTS.get(`deploys/${deployId}${path}`);
-    if (!object) return null;
-    return { content: await object.text(), contentType: object.httpMetadata?.contentType ?? "application/octet-stream" };
-  }
-  const stored = await env.APPROVALS.get(`artifact:${deployId}${path}`);
-  if (!stored) return null;
-  const parsed = JSON.parse(stored) as { content: string; contentType: string };
-  return { content: parsed.content, contentType: parsed.contentType };
 }
 
 // Chat: send a prompt and get agent response
@@ -107,7 +69,17 @@ app.get("/api/file/*", async (c) => {
   }
 });
 
+// ─── AI Budget ──────────────────────────────────────────────────────────────
+
+app.get("/api/budget", async (c) => {
+  const budget = await getNeuronBudget(c.env.BUDGET);
+  return c.json(budget);
+});
+
 // ─── Deploy Gatekeeper API ──────────────────────────────────────────────────
+// This is the human-in-the-loop security boundary. The agent can only REQUEST
+// deploys; applying one requires an explicit approval from this API, which no
+// agent prompt can reach. See src/gatekeeper.ts.
 
 // Request deploy
 app.post("/api/deploy", async (c) => {
@@ -119,93 +91,61 @@ app.post("/api/deploy", async (c) => {
   }
 
   const ws = getWorkspaceStub(c.env, userId);
-  const request = await ws.requestDeploy(projectName);
+  const fileTree = await ws.getFileTree();
+  const files = await collectFilesFromTree(c.env, userId, fileTree);
+
+  const request = await gatekeeper.requestDeploy(c.env, { projectName, files, requestedBy: userId });
 
   logger.info("Deploy requested", { event: "deploy.request", deployId: request.deployId, projectName });
 
   return c.json(request);
 });
 
-// List pending approvals
+// List pending deployments
 app.get("/api/approvals/:userId?", async (c) => {
-  const userId = c.req.param("userId") || "default";
-  const ws = getWorkspaceStub(c.env, userId);
-  const deployments = await ws.listDeployments();
+  const deployments = await gatekeeper.listDeployments(c.env);
   return c.json(deployments);
 });
 
-// Approve deploy
+// Approve deploy → real upload to the account's free tier when configured
 app.post("/api/approvals/:deployId/approve", async (c) => {
   const deployId = c.req.param("deployId");
-  const data = await c.env.APPROVALS.get(`deploy:${deployId}`);
+  const result = await gatekeeper.approveDeploy(c.env, deployId);
 
-  if (!data) {
-    return c.json({ error: "Deploy not found" }, 404);
+  if (!result.success && result.deploy.status === "failed") {
+    logger.warn("Deploy approval failed", { event: "deploy.approve.failed", deployId, error: result.message });
+  } else {
+    logger.info("Deploy approved", { event: "deploy.approved", deployId, url: result.deploy.deployedUrl, mode: result.deploy.deployMode });
   }
 
-  const deploy = JSON.parse(data);
-  deploy.status = "approved";
-  deploy.approvedAt = Date.now();
-
-  // "Deploy" by packaging files to artifacts storage (R2, or KV on free tier)
-  const files = deploy.files as Record<string, string>;
-  const projectName = deploy.projectName;
-
-  for (const [path, content] of Object.entries(files)) {
-    await storeArtifact(c.env, deployId, path, content, getContentType(path));
-  }
-
-  // Create a manifest
-  const manifest = {
-    deployId,
-    projectName,
-    files: Object.keys(files),
-    deployedAt: Date.now(),
-    url: `https://${projectName}.devforge.workers.dev`,
-  };
-
-  await storeArtifact(c.env, deployId, "/manifest.json", JSON.stringify(manifest, null, 2), "application/json");
-
-  deploy.status = "deployed";
-  deploy.deployedAt = Date.now();
-  deploy.deployedUrl = manifest.url;
-
-  await c.env.APPROVALS.put(`deploy:${deployId}`, JSON.stringify(deploy), {
-    expirationTtl: 86400 * 7, // 7 days
-  });
-
-  logger.info("Deploy approved and executed", { event: "deploy.approved", deployId, url: manifest.url });
-
-  return c.json({ success: true, url: manifest.url });
+  return c.json({ success: result.success, message: result.message, deploy: result.deploy });
 });
 
 // Reject deploy
 app.post("/api/approvals/:deployId/reject", async (c) => {
   const deployId = c.req.param("deployId");
-  const data = await c.env.APPROVALS.get(`deploy:${deployId}`);
+  const deploy = await gatekeeper.rejectDeploy(c.env, deployId);
 
-  if (!data) {
+  if (!deploy) {
     return c.json({ error: "Deploy not found" }, 404);
   }
 
-  const deploy = JSON.parse(data);
-  deploy.status = "rejected";
-  deploy.rejectedAt = Date.now();
-
-  await c.env.APPROVALS.put(`deploy:${deployId}`, JSON.stringify(deploy), {
-    expirationTtl: 86400,
-  });
-
   logger.info("Deploy rejected", { event: "deploy.rejected", deployId });
-
-  return c.json({ success: true });
+  return c.json({ success: true, deploy });
 });
 
-// Get deployed artifact
+// Deploy audit log
+app.get("/api/approvals/:deployId/logs", async (c) => {
+  const deployId = c.req.param("deployId");
+  const logs = await gatekeeper.getDeployLogs(c.env, deployId);
+  return c.json(logs);
+});
+
+// Get deployed artifact (archive mode)
 app.get("/api/artifacts/:deployId/*", async (c) => {
   const deployId = c.req.param("deployId");
   const path = "/" + c.req.path.replace(`/api/artifacts/${deployId}/`, "");
-  const artifact = await getArtifact(c.env, deployId, path);
+  const artifact = await gatekeeper.getArtifact(c.env, deployId, path);
 
   if (!artifact) {
     return c.json({ error: "Not found" }, 404);
@@ -227,19 +167,33 @@ app.get("/*", async (c) => {
     // No assets binding or error
   }
 
+  // Fall back to a module redirect for the assets binding without a shell page
   return c.json({ error: "Not found" }, 404);
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function getContentType(path: string): string {
-  if (path.endsWith(".ts") || path.endsWith(".tsx")) return "text/typescript";
-  if (path.endsWith(".js")) return "text/javascript";
-  if (path.endsWith(".json")) return "application/json";
-  if (path.endsWith(".html")) return "text/html";
-  if (path.endsWith(".css")) return "text/css";
-  if (path.endsWith(".md")) return "text/markdown";
-  return "text/plain";
+interface TreeNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  children?: TreeNode[];
+}
+
+async function collectFilesFromTree(env: Env, userId: string, tree: TreeNode[], out: Record<string, string> = {}): Promise<Record<string, string>> {
+  const ws = getWorkspaceStub(env, userId);
+  for (const node of tree) {
+    if (node.isDirectory && node.children) {
+      await collectFilesFromTree(env, userId, node.children, out);
+    } else if (!node.isDirectory) {
+      try {
+        out[node.path] = await ws.readFile(node.path);
+      } catch {
+        // skip binary/undecodable files
+      }
+    }
+  }
+  return out;
 }
 
 // ─── Export ─────────────────────────────────────────────────────────────────

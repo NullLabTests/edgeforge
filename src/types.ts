@@ -4,7 +4,14 @@ export interface Env {
   AI: Ai;
   ARTIFACTS?: R2Bucket;
   APPROVALS: KVNamespace;
+  BUDGET: KVNamespace;
   ASSETS: { fetch: (req: Request) => Promise<Response> };
+
+  // Optional secrets that enable REAL deploys to the account's free tier.
+  // Without them the Gatekeeper packages an archive instead (see gatekeeper.ts).
+  CF_ACCOUNT_ID?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  CF_ACCOUNT_SUBDOMAIN?: string;
 }
 
 // ─── Workspace DO RPC interface ─────────────────────────────────────────────
@@ -56,6 +63,7 @@ export interface AgentResult {
   filesWritten: string[];
   testResults?: TestResult[];
   neuronsUsed: number;
+  budget?: { remaining: number; used: number; limit: number };
 }
 
 export interface TestResult {
@@ -78,12 +86,16 @@ export interface ToolResult {
 }
 
 // ─── Deploy Types ───────────────────────────────────────────────────────────
+export type DeployStatusValue = "pending" | "approved" | "rejected" | "deployed" | "failed";
+export type DeployMode = "real" | "archive";
+
 export interface DeployRequest {
   deployId: string;
   projectName: string;
-  status: "pending" | "approved" | "rejected" | "deployed" | "failed";
+  status: DeployStatusValue;
   fileCount: number;
   createdAt: number;
+  requestedBy?: string;
   simulatedUrl: string;
 }
 
@@ -91,7 +103,17 @@ export interface DeployStatus extends DeployRequest {
   approvedAt?: number;
   deployedAt?: number;
   deployedUrl?: string;
+  deployMode?: DeployMode;
+  rejectedAt?: number;
   error?: string;
+}
+
+export interface DeployActionLog {
+  type: string;
+  deployId: string;
+  projectName?: string;
+  detail?: string;
+  timestamp: number;
 }
 
 // ─── Exec Simulation Types ──────────────────────────────────────────────────

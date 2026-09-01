@@ -1,0 +1,19 @@
+name = "edgeforge-gatekeeper"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "APPROVALS"
+id = "<your-kv-namespace-id>"
+
+[[kv_namespaces]]
+binding = "BUDGET"
+id = "<your-kv-namespace-id>"
+
+# Optional: real deploys to the account free tier
+# [vars]
+# CF_ACCOUNT_SUBDOMAIN = "your-account-subdomain"
+
+# Configure via: npx wrangler secret put CF_ACCOUNT_ID ...
+#         and:   npx wrangler secret put CLOUDFLARE_API_TOKEN ...

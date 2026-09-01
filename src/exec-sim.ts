@@ -34,7 +34,9 @@ export async function simulateExec(
     return { stdout: "/", stderr: "", exitCode: 0 };
   }
   if (trimmed.startsWith("echo ")) {
-    return { stdout: trimmed.slice(6, -1) || trimmed.slice(5), stderr: "", exitCode: 0 };
+    const rest = trimmed.slice(5).trim();
+    const unquoted = rest.replace(/^"/, "").replace(/"$/, "");
+    return { stdout: unquoted, stderr: "", exitCode: 0 };
   }
 
   // Default: unknown command

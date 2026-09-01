@@ -2,6 +2,7 @@ import type { Workspace } from "@cloudflare/computer";
 import type { Env, AgentResult, ToolCall, ToolResult, TestResult } from "./types.js";
 import { getToolDefinitions, executeTool } from "./tools.js";
 import { ensureParentDirs } from "./fs-helpers.js";
+import { canRunTask, getNeuronBudget, addNeuronsUsedToday } from "./budget.js";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("agent");
@@ -52,6 +53,25 @@ export async function runAgentLoop(
 
   let neuronsUsed = 0;
 
+  // Reserve budget up front so a long task can't blow through the free 10K/day
+  // allowance (Workers AI rolls over at midnight UTC).
+  const budget = await getNeuronBudget(env.BUDGET);
+  if (!(await canRunTask(env.BUDGET, maxIterations))) {
+    logger.warn("Daily AI budget exhausted at task start", {
+      event: "agent.budget.exhausted",
+      used: budget.used,
+      remaining: budget.remaining,
+    });
+    return {
+      status: "budget_exhausted",
+      summary: `Daily AI budget nearly exhausted (${budget.used}/${budget.limit} neurons used). Resets at midnight UTC.`,
+      iterations: 0,
+      filesWritten,
+      neuronsUsed: 0,
+      budget,
+    };
+  }
+
   for (let i = 0; i < maxIterations; i++) {
     logger.info(`Iteration ${i + 1}/${maxIterations}`, { event: "agent.iteration", iteration: i + 1 });
 
@@ -82,28 +102,33 @@ export async function runAgentLoop(
       };
     }
     neuronsUsed += response.neuronsUsed;
+    await addNeuronsUsedToday(env.BUDGET, response.neuronsUsed);
 
     // Check budget (10K neurons/day)
     if (neuronsUsed > 9000) {
       logger.warn("Neuron budget nearly exhausted", { event: "agent.budget.warning", neuronsUsed });
+      const finalBudget = await getNeuronBudget(env.BUDGET);
       return {
         status: "budget_exhausted",
         summary: "Daily AI budget nearly exhausted. Resets at midnight UTC.",
-        iterations: i,
+        iterations: i + 1,
         filesWritten,
         neuronsUsed,
+        budget: finalBudget,
       };
     }
 
     // If the model returned a text response with no tool calls, we're done
     if (!response.tool_calls || response.tool_calls.length === 0) {
       logger.info("Agent completed", { event: "agent.complete", iterations: i + 1, neuronsUsed });
+      const finalBudget = await getNeuronBudget(env.BUDGET);
       return {
         status: "complete",
         summary: response.text || "Task completed.",
         iterations: i + 1,
         filesWritten,
         neuronsUsed,
+        budget: finalBudget,
       };
     }
 
@@ -138,12 +163,14 @@ export async function runAgentLoop(
   }
 
   logger.warn("Agent reached max iterations", { event: "agent.max_iterations", neuronsUsed });
+  const finalBudget = await getNeuronBudget(env.BUDGET);
   return {
     status: "max_iterations",
     summary: `Reached maximum iterations (${maxIterations}). Files written: ${filesWritten.join(", ")}`,
     iterations: maxIterations,
     filesWritten,
     neuronsUsed,
+    budget: finalBudget,
   };
 }
 
