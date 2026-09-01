@@ -1,166 +1,334 @@
-# DevForge — AI Development Agent on Cloudflare
+<p align="center">
+  <img src="docs/cloudflare-logo.svg" alt="Cloudflare logo" width="240"/>
+</p>
 
-DevForge is an AI agent that builds Cloudflare Workers projects from natural-language
-prompts, running **entirely on the Cloudflare free tier** — no paid plan, no credit card,
-no virtual machines.
+<div align="center">
 
-The user describes what they want; the agent plans, writes a durable virtual filesystem,
-runs a static-analysis "test" pass, fixes failures, and requests a deployment that a human
-reviews and approves.
+# ⚡ EdgeForge
 
-## The flow
+### An AI development sandbox that runs entirely on Cloudflare's free tier — a natural-language prompt, and a live Worker on your account.
 
-1. User sends a prompt ("Build me a hello-world Worker").
-2. The agent (Workers AI + Granite 4.0 Micro, a few neurons per call) plans the project
-   and emits **tool calls**.
-3. Tools write files to a **durable virtual filesystem** backed by
-   [@cloudflare/computer](https://www.npmjs.com/package/@cloudflare/computer)'s
-   filesystem API over SQLite storage inside a Durable Object.
-4. The agent runs `npm install` / `npm test` through a **simulated exec engine**
-   (static analysis — no containers on the free tier).
-5. On failure it reads the errors, edits code, and retries.
-6. Once checks pass it requests a deploy, which is queued in KV for human approval.
-7. The user approves in the UI.
+**No paid plan · No credit card · No virtual machines · 100% real deploys**
 
-## What's live
+**[Try it live →](https://edgeforge.creatorplntu.workers.dev)**
+**· [The pipeline animation →](docs/edgeforge-demo.svg)**
 
-This repository is the code that powers a **production deployment** at
-**https://devforge.creatorplntu.workers.dev** on a real Cloudflare account, with the
-live agent verified end-to-end:
+</div>
 
-- **Real workers.dev subdomain** — `creatorplntu.workers.dev`.
-- **Real KV namespace** — approvals & artifact fallback storage.
-- **Real Durable Object** — `WorkspaceDO` with SQLite storage for the virtual filesystem.
-- **Live AI binding** — the agent really calls `@cf/ibm-granite/granite-4.0-h-micro` and
-  writes real files; verified: it wrote `src/index.ts` (a correct hello-world Worker) and
-  `wrangler.toml`, ran simulated install/test, and queued a deploy across 9 iterations.
+---
 
-## Project layout
+## Trademark & attribution
+
+**Cloudflare** and the **Cloudflare logo** are trademarks or registered trademarks of
+Cloudflare, Inc. in the United States and other jurisdictions, and this project is an
+independent, non-commercial demonstration built **with**, and intended to run **on**, the
+Cloudflare platform.
+
+This project is **not** an official Cloudflare product. It is **not** affiliated with,
+endorsed by, sponsored by, or otherwise associated with Cloudflare, Inc. The Cloudflare
+logo is reproduced at the top of this document under Cloudflare's published brand
+guidelines solely to identify the platform on which this project runs, and all rights,
+title, and interest in and to the logo (including its copyright) remain the exclusive
+property of Cloudflare, Inc. and its licensors. Please see
+[Cloudflare's brand guidelines](https://www.cloudflare.com/brand/) before using their
+marks, and contact [Cloudflare](https://www.cloudflare.com/) with any questions about
+their trademark usage policy.
+
+---
+
+## The whole loop, animated
+
+The animation below is the **entire** pipeline this project demonstrates — from
+`wrangler login` on a brand-new free account to a **live** `workers.dev` URL with a human
+approval in the middle:
+
+<p align="center">
+  <img src="docs/edgeforge-demo.svg" alt="EdgeForge pipeline animation" width="100%"/>
+</p>
+
+*If your viewer doesn't animate SVG, open [`docs/edgeforge-demo.svg`](docs/edgeforge-demo.svg)
+directly — or, if the full HD recording has been rendered, watch it at
+[`docs/video/edgeforge-walkthrough.mp4`](docs/video/edgeforge-walkthrough.mp4).*
+
+---
+
+## What this is, and why it matters
+
+EdgeForge is a working proof-of-concept: an **AI development agent that lives on the
+edge**, where a natural-language prompt produces a **live Cloudflare Worker** on a real
+account — with a human approving every deploy.
+
+You describe an app in plain English. An agent running on [Workers AI] plans it, writes
+real files to a durable filesystem, verifies them, and requests a deployment. A human
+reviews the diff and clicks **Approve** — and a brand-new Worker goes live on the
+account's `workers.dev` subdomain, pushed by the Gatekeeper through the real Cloudflare
+Workers Upload API.
+
+Everything — the agent, the filesystem, the approval queue, the budget ledger, the audit
+log, and the approve-button — is a Cloudflare Worker you can run on a **free** account.
+
+> **Why it matters:** this is a portrait of the platform in miniature. In a single demo we
+> put durable state (Durable Objects + SQLite), high-volume key/value storage (KV),
+> inference (Workers AI), static hosting (Workers Static Assets), and a real,
+> permissioned deploy path (Workers Upload API) behind one workflow that any customer can
+> reproduce for $0. It demonstrates that EdgeForge-style "AI writes code, humans ship it"
+> flows are not a distant concept — they run today, on the free tier, with auditability and
+> human oversight built in by construction.
+
+---
+
+## Live proof (real account, real deploys)
+
+The instance at **[edgeforge.creatorplntu.workers.dev](https://edgeforge.creatorplntu.workers.dev)**
+is running right now on a free account. End-to-end runs were verified live:
+
+| Artifact | URL | Status |
+|---|---|---|
+| **EdgeForge platform** (this repo, live) | https://edgeforge.creatorplntu.workers.dev | ✅ serving API + UI |
+| **Agent-built worker, Gatekeeper-deployed** | https://zerohour.creatorplntu.workers.dev | ✅ live, returns `{"app":"zero"}` |
+
+The `zerohour` worker was **not** written by hand. A prompt asked the agent to build it; the
+agent wrote `/src/index.js` and a `wrangler.jsonc` into the durable filesystem; the
+Gatekeeper queued it; a human approved it; and the Worker went live. The audit trail for
+`deploy.request → deploy.approved` is inspectable through the API.
+
+---
+
+## How it works
 
 ```
-devforge/
-├── src/
-│   ├── index.ts         # Hono Worker: chat / file / deploy / approval API + static assets
-│   ├── workspace.ts     # WorkspaceDO: @cloudflare/computer virtual FS + agent entry
-│   ├── agent.ts         # Agent loop: plan -> write -> test -> fix -> deploy
-│   ├── tools.ts         # AI tool definitions + execution (write/read/edit/ls/find/grep/delete/exec/deploy)
-│   ├── exec-sim.ts      # Simulated shell: static validation instead of a real shell
-│   ├── fs-helpers.ts    # ensureParentDirs (absolute-path parent creation)
-│   ├── types.ts         # Shared types + Env bindings
-│   └── logger.ts        # Structured logger
-├── frontend/            # React + Vite UI (chat, file tree, approval queue)
-├── test/                # Vitest unit tests (exec engine)
-├── wrangler.toml        # Worker config: DO, AI, KV, assets
-└── package.json
+   You                          Cloudflare (free tier)
+┌─────────┐    prompt     ┌──────────────────────────────────────────────────────┐
+│  Chat   │ ──────────────▶ │  Worker (Hono)                                       │
+│  UI     │                 │   ├─ /api/chat        agent loop ─┐                  │
+└─────────┘                 │   │      │                         │  Workers AI     │
+                           │   │      ▼                         │  (Granite)      │
+                           │   │  WorkspaceDO  ◀── writes ────  │  tool calls      │
+                           │   │  (Durable Object, SQLite)      │                  │
+                           │   │      │  getFileTree()/readFile()                 │
+                           │   │      ▼                                          │
+                           │   │  Gatekeeper  ◀── deploy request ──            │
+                           │   │  (KV queue + audit log)          │              │
+                           │   └──────────┬───────────────────────────┘            │
+                           └──────────────┼────────────────────────────────────────┘
+                                          │ Approve
+                                          ▼
+                             Workers Upload API  →  NEW live Worker
+                             (https://<name>.<subdomain>.workers.dev)
 ```
 
-## Architecture
+### The moving parts
 
-- **Worker** — a single Hono app serving the JSON API and the built frontend as static
-  assets. Exposes `/api/chat`, `/api/files`, `/api/file/*`, `/api/deploy`, `/api/approvals`,
-  `/api/approve`.
-- **WorkspaceDO** — a Durable Object (SQLite backend) owning one `@cloudflare/computer`
-  workspace per user. It hosts `runAgentLoop`, so the agent's file writes survive across
-  requests and hibernation.
-- **Agent** — a tool-calling loop over Granite. Each turn sends the message transcript plus
-  JSON tool definitions; the model returns either text (done) or tool calls (write/read/
-  edit/ls/find/grep/delete/exec/deploy).
-- **KV** — the approval queue (`deploy:` keys) plus a size-sane artifact fallback in place
-  of R2 (`artifact:` keys under `artifact:${deployId}...`).
-- **exec-sim** — instead of a real Linux shell, validates file syntax and runs structural
-  checks so the "test" step is honest while staying 100% free.
+| Layer | What it is | Cloudflare primitive |
+|---|---|---|
+| **Agent** | A tool-calling loop: plan → write → verify → fix → request deploy | `Workers AI · @cf/ibm-granite/granite-4.0-h-micro` |
+| **Workspace** | A durable, per-user virtual filesystem the agent writes to | `@cloudflare/computer` over a **Durable Object** backed by **SQLite** |
+| **Gatekeeper** | The only path from the sandbox to your account. Agent can *request*; a human must *approve* | **KV** (queue + immutable audit log) + **Workers Upload API** |
+| **Budget** | A daily neuron ledger so the agent self-limits | **KV** (10,000 neurons/day free allowance, 500 reserve) |
+| **Verify step** | Static-analysis checks (`exec`) instead of a shell | no containers on free tier — transparent trade-off |
+| **UI** | Chat, file tree, approval queue, budget meter | **Workers Static Assets** (built `frontend/dist`) |
 
-## The Granite schema gotcha
+### The deploy path is real
 
-Workers AI's binding for `granite-4.0-h-micro` accepts **only** messages with plain
-string `content` — i.e. the standard `role`/`content` pair. It **rejects** transcripts that
-round-trip an assistant `tool_calls` message or a `role: "tool"` result, erroring with
-`5006: oneOf at '/' not met`. The agent loop therefore flattens each completed tool call
-into an ordinary user message quoting the tool name and its output. Multi-turn tool use
-still works; the transcript just stays schema-safe.
+When you approve, the Gatekeeper calls the exact endpoint `wrangler deploy` uses:
+`PUT /accounts/{account}/workers/scripts/{name}`, then enables the `workers.dev` route. The
+deployed artifact is the module the agent wrote — no build step. Credentials (`account id`,
+an API token scoped to *Workers Scripts: Edit*) are **cloudflare secrets on the Worker**,
+never in the repo.
 
-## Free-tier reality
-
-| Layer | Approach | Free? |
-|-------|----------|-------|
-| Virtual filesystem | `@cloudflare/computer` filesystem mode (DO SQLite storage) | ✅ |
-| Agent model | `@cf/ibm-granite/granite-4.0-h-micro` (a few neurons/call) | ✅ |
-| Shell exec | Simulated via static analysis (no containers) | ✅ |
-| Approvals storage | KV (1 GB free tier) | ✅ |
-| Artifacts | KV fallback (R2 is paid-only to enable on this account) | ✅ |
-| Durable Objects | SQLite backend, free tier | ✅ |
-
-A full Linux shell (real `npm install`, real `wrangler deploy` from inside the sandbox)
-needs Cloudflare Containers / Dynamic Workers, which are **Workers Paid**. DevForge
-deliberately uses the filesystem-only mode and a simulated exec engine to stay free.
-
-## Prerequisites (to run your own instance)
-
-- A Cloudflare account (a free one works — no card required).
-- Node.js 20+ and npm.
-- Workers AI enabled on the account.
-- A KV namespace (approvals). Create one and put its id in `wrangler.toml`:
-
-```toml
-[[kv_namespaces]]
-binding = "APPROVALS"
-id = "<your-kv-namespace-id>"
+```
+agent code  ──►  Gatekeeper queued  ──►  you click Approve  ──►  live on workers.dev
+                 (KV deploy:<id>,        (audit log,           (real API upload +
+                  audit log)              budget untouched)      subdomain enabled)
 ```
 
-- Decide your workers.dev subdomain (or rely on the account one).
-- Build the frontend so `frontend/dist` exists before deploying.
+### Human-in-the-loop, by construction
 
-## Development
+- The agent has **no path to your account** — the only way code leaves the sandbox is the
+  `deploy()` tool, and that only *queues*.
+- Every action is appended to an audit log (`deploy.request`, `deploy.approved`,
+  `deploy.rejected`).
+- The daily neuron budget keeps an unruly agent from burning quota; the reserve
+  (500 neurons) guarantees the flow itself always answers.
+
+### Why this matters to a platform team (the enterprise read)
+
+- **A safe way to let AI write code near production**: humans gate deploys, the AI never
+  touches credentials, and every deploy has an audit trail.
+- **A zero-friction onboarding wedge**: free account, no bill, no infra to stand up — a
+  customer can run a full pilot the same day.
+- **The platform as the product demo**: one repo showcases Durable Objects + SQLite, KV,
+  Workers AI, Static Assets, the Upload API, and `wrangler` — the whole developer story on
+  one screen.
+
+---
+
+## The `wrangler` CLI did the heavy lifting
+
+The **Cloudflare CLI** is the backbone of all of this — the README's favorite tool because
+it collapses an entire platform into commands:
 
 ```bash
-# backend deps
-npm install --legacy-peer-deps
+# 1. Real auth against your account (OAuth in the browser)
+npx wrangler login
 
-# frontend deps
+# 2. Provision the approval/budget stores and drop ids into wrangler.toml
+npx wrangler kv namespace create APPROVALS
+npx wrangler kv namespace create BUDGET
+
+# 3. Push credentials as secrets (kept out of the repo by wrangler)
+printf '<ACCOUNT_ID>'                               | npx wrangler secret put CF_ACCOUNT_ID
+printf '<API_TOKEN scoped to Workers Scripts: Edit>' | npx wrangler secret put CLOUDFLARE_API_TOKEN
+
+# 4. Ship the platform worker (code + Durable Object + AI binding + KV + assets)
+npm --prefix frontend run build
+npx wrangler deploy
+
+# 5. Watch the agent work in real time
+npx wrangler tail edgeforge
+```
+
+Everything this project automates with one "approve" is what `wrangler deploy` does —
+the Gatekeeper just does it for an artifact your agent produced, after a human says go.
+
+> A full **standalone deploys-as-a-service** variant ships in
+> [`packages/gatekeeper-deploy/`](packages/gatekeeper-deploy/) — a self-contained Worker
+> exposing `/rpc/request-deploy`, `/rpc/approve-deploy`, etc., so the credential-holding
+> Gatekeeper can live as its own service behind a service binding (the Cloudflare OS
+> pattern).
+
+---
+
+## Run it yourself (free account, ~10 minutes)
+
+**Prerequisites:** Node.js 20+, npm, a Cloudflare account (free — no card), and Workers AI
+enabled on that account. Then, entirely through `wrangler`:
+
+```bash
+git clone git@github.com:NullLabTests/edgeforge.git && cd edgeforge
+npm install --legacy-peer-deps
 (cd frontend && npm install --legacy-peer-deps)
 
-# build the frontend (into frontend/dist, served as static assets)
+npx wrangler login                            # authorize in the browser
+
+# two KV namespaces → paste the printed ids into wrangler.toml (APPROVALS, BUDGET)
+npx wrangler kv namespace create APPROVALS
+npx wrangler kv namespace create BUDGET
+
+# optional but recommended: live deploys from approvals
+printf '<ACCOUNT_ID>'                               | npx wrangler secret put CF_ACCOUNT_ID
+printf '<API_TOKEN scoped to Workers Scripts: Edit>' | npx wrangler secret put CLOUDFLARE_API_TOKEN
+# optional var (shown in wrangler.toml): CF_ACCOUNT_SUBDOMAIN = "<your-subdomain>"
+
 npm --prefix frontend run build
-
-# run the executor tests
-npx vitest run
-
-# run wrangler dev
-npm run dev
-# visit http://localhost:8787
+npx wrangler deploy                                # live at https://edgeforge.<sub>.workers.dev
 ```
 
-Try: **"Build me a hello-world worker"** in the chat.
+Then open the UI and type:
 
-## Deploy
+> **"Build me a hello-world API."**
+
+Watch the file tree fill in, review the queue, and hit **Approve**. A live worker lands on
+your account's `workers.dev`. To see it happen against a real agent across turns:
 
 ```bash
-npm --prefix frontend run build   # ensure assets are fresh
-npm run deploy                    # wrangler deploy (Worker + DO + AI + KV + assets)
+curl -X POST https://<your>.workers.dev/api/chat \
+  -H 'content-type: application/json' \
+  -d '{"prompt":"build a worker that echoes JSON","userId":"me"}'
 ```
 
-This uploads the Worker, reconciles the Durable Object, binds the AI runtime and the KV
-namespace, and serves the built assets — landing at `https://<subdomain>.<account>.workers.dev`.
+---
 
-## Neuron budget
+## Repo layout
 
-The free tier grants **10,000 neurons/day**. Granite 4.0 Micro costs roughly 1.5 input +
-10 output neurons per M tokens, so a typical 5-iteration task uses a few hundred neurons.
-`runAgentLoop` stops at 9,000 neurons/day to stay under the limit.
+```
+edgeforge/
+├── src/
+│   ├── index.ts          # Hono Worker: chat / file / deploy / approval API + assets
+│   ├── workspace.ts      # WorkspaceDO: @cloudflare/computer FS + agent entry (SQLite)
+│   ├── agent.ts          # tool-calling loop over Workers AI + offline fallback
+│   ├── tools.ts          # tool defs + execution (write/read/edit/ls/find/grep/delete/exec/deploy)
+│   ├── gatekeeper.ts     # Deploy Gatekeeper: queue, real upload, audit log, artifacts
+│   ├── budget.ts         # daily neuron ledger (KV)
+│   ├── exec-sim.ts       # static-analysis verify pass (no shell, no containers)
+│   ├── fs-helpers.ts / logger.ts / types.ts
+├── frontend/             # React + Vite UI (chat, file tree, approval queue, budget)
+├── blueprints/ai-dev-sandbox/   # reusable Cloudflare blueprint (gadget template)
+├── packages/gatekeeper-deploy/  # standalone Deploy Gatekeeper Worker (/rpc/*)
+├── docs/
+│   ├── edgeforge-demo.svg      # animated pipeline diagram
+│   ├── cloudflare-logo.svg     # official logo (see Trademark & attribution)
+│   └── video/                  # walkthrough video ships here (edgeforge-walkthrough.mp4)
+├── test/                 # Vitest (26 tests)
+└── wrangler.toml         # worker config: DO, AI, KV, assets, subdomain
+```
 
-## Constraints & trade-offs
+---
 
-- **`exec` is simulated** — it validates syntax and runs structural checks rather than a
-  real shell. This is the deliberate trade-off for the free tier.
-- **Simulated deploy** — the agent packages files and queues an approval; the actual
-  "worker goes live" step is the human-approved package in this prototype.
-- **Single-user** — workspaces are keyed by an in-code `userId` (default `"default"`);
-  the upstream Cloudflare OS auth layer is not ported.
+## The free-tier reality (honest)
+
+| Layer | Approach | Free tier? |
+|---|---|---|
+| Agent model | Granite 4.0 Micro (~1.5 / ~10 neurons per M tokens, in/out) | ✅ 10,000 neurons/day |
+| Durable filesystem | `@cloudflare/computer` over DO SQLite | ✅ |
+| Approval queue + audit log + budget | KV | ✅ |
+| AI-built deploys | Workers Upload API (no build step required) | ✅ |
+| Verify step | static-analysis checks instead of a shell | ✅ (trade-off, below) |
+| UI hosting | Workers Static Assets | ✅ |
+
+**The one honest trade-off:** there's no real Linux shell on the free tier, so `exec`
+performs syntax/structural verification rather than running `npm install` in a container.
+Real containers are a Cloudflare **Workers Paid** feature — a clean, up-sell-ready boundary
+for enterprise conversations. Everything else runs unmodified on a free account today.
+
+---
 
 ## Tests
 
 ```bash
-npx vitest run
+npx vitest run        # 26 passing: agent, budget, gatekeeper, exec engine, blueprint
+npx tsc --noEmit      # type-clean
+npx wrangler deploy --dry-run   # bundle check for the platform worker
 ```
 
-Covers the simulated exec engine (npm install/test, wrangler dry-run, error cases).
+---
+
+## Video walkthrough
+
+A guided walkthrough **will ship at `docs/video/edgeforge-walkthrough.mp4`** — booting from
+a fresh prompt, watching the agent work through `wrangler tail`, reviewing the queue,
+approving, and hitting the live URL. A short GIF/MP4 lead clip gets embedded above in the
+animated section; the full HD recording lives alongside the repo.
+
+*(Slot reserved — render & commit the video, then it appears automatically.)*
+
+---
+
+## Roadmap / where it can go
+
+- **R2-backed artifacts** on accounts where R2 is enabled (uploads today use KV fallback).
+- **Zone-custom-domain deploys** for accounts with a domain attached.
+- **More agents / models** — swap `granite-4.0-h-micro` for larger models up to the plan.
+- **Real containers behind the paywall boundary** — the natural enterprise add-on.
+- **Persistence of approved deploys** into Git for a single source of truth.
+
+---
+
+## Security notes
+
+- Credentials are `wrangler secret` values on the Worker — never in the repo.
+- The Gatekeeper's token is scoped to *Workers Scripts: Edit* (least privilege for deploys).
+- The agent can never read or emit secrets; it only produces files in its sandbox.
+- Approvals expire after 7 days by design; rejected deploys expire after 1.
+
+---
+
+<div align="center">
+
+Built with **[Cloudflare Workers](https://developers.cloudflare.com/workers/) · Durable
+Objects · KV · [Workers AI](https://developers.cloudflare.com/ai/) · Static Assets ·
+[`wrangler`](https://developers.cloudflare.com/workers/wrangler/)** — on the **free tier**.
+
+</div>
+
+[Workers AI]: https://developers.cloudflare.com/ai/

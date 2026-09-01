@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f6821f"/>
+      <stop offset="1" stop-color="#ffd07f"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f6821f"/>
+      <stop offset="1" stop-color="#ffd07f"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="880" height="400" rx="18" fill="url(#bg)" stroke="#1e293b" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <text x="32" y="44" fill="#ffffff" font-size="21" font-weight="700">edgeforge</text>
+  <text x="32" y="68" fill="#94a3b8" font-size="13">AI dev sandbox at the edge — a prompt that turns into a live worker</text>
+
+  <!-- Progress bar -->
+  <rect x="32" y="86" width="816" height="6" rx="3" fill="#1e293b"/>
+  <rect x="32" y="86" width="816" height="6" rx="3" fill="url(#bar2)">
+    <animate attributeName="width" values="0;816" keyTimes="0;1" dur="6s" begin="0s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Stage nodes -->
+  <!-- S1 prompt -->
+  <g>
+    <circle cx="32" cy="170" r="18" fill="#1e293b" stroke="#f6821f" stroke-width="2">
+      <animate attributeName="fill" values="#1e293b;#f6821f;#1e293b" keyTimes="0;0.5;1" dur="6s" begin="0s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="18;20;18" keyTimes="0;0.5;1" dur="6s" begin="0s" repeatCount="indefinite"/>
+    </circle>
+    <text x="32" y="175" text-anchor="middle" fill="#0b1220" font-size="14" font-weight="700">
+      1
+    </text>
+    <text x="32" y="212" text-anchor="middle" fill="#e2e8f0" font-size="12.5">User prompt</text>
+    <text x="32" y="230" text-anchor="middle" fill="#64748b" font-size="10.5">"build me an API"</text>
+  </g>
+
+  <!-- connector 1 -->
+  <line x1="88" y1="170" x2="190" y2="170" stroke="#334155" stroke-width="3"/>
+  <circle r="5" fill="#f6821f" filter="url(#glow)">
+    <animate attributeName="cx" values="88;190" keyTimes="0;1" dur="6s" begin="0s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="170;170" keyTimes="0;1" dur="6s" begin="0s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- S2 agent -->
+  <g>
+    <circle cx="230" cy="170" r="18" fill="#1e293b" stroke="#f6821f" stroke-width="2">
+      <animate attributeName="fill" values="#1e293b;#ffd07f;#1e293b" keyTimes="0;0.5;1" dur="6s" begin="0.4s" repeatCount="indefinite"/>
+    </circle>
+    <text x="230" y="175" text-anchor="middle" fill="#0b1220" font-size="14" font-weight="700">2</text>
+    <text x="230" y="212" text-anchor="middle" fill="#e2e8f0" font-size="12.5">Agent loop</text>
+    <text x="230" y="230" text-anchor="middle" fill="#64748b" font-size="10.5">Workers AI · Granite</text>
+  </g>
+
+  <!-- connector 2 -->
+  <line x1="286" y1="170" x2="390" y2="170" stroke="#334155" stroke-width="3"/>
+  <circle r="5" fill="#f6821f" filter="url(#glow)">
+    <animate attributeName="cx" values="286;390" keyTimes="0;1" dur="6s" begin="1.3s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="170;170" keyTimes="0;1" dur="6s" begin="1.3s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- S3 workspace -->
+  <g>
+    <circle cx="430" cy="170" r="18" fill="#1e293b" stroke="#38bdf8" stroke-width="2">
+      <animate attributeName="fill" values="#1e293b;#38bdf8;#1e293b" keyTimes="0;0.5;1" dur="6s" begin="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="430" y="175" text-anchor="middle" fill="#0b1220" font-size="14" font-weight="700">3</text>
+    <text x="430" y="212" text-anchor="middle" fill="#e2e8f0" font-size="12.5">Workspace</text>
+    <text x="430" y="230" text-anchor="middle" fill="#64748b" font-size="10.5">DO · SQLite filesystem</text>
+  </g>
+
+  <!-- connector 3 -->
+  <line x1="486" y1="170" x2="590" y2="170" stroke="#334155" stroke-width="3"/>
+  <circle r="5" fill="#38bdf8" filter="url(#glow)">
+    <animate attributeName="cx" values="486;590" keyTimes="0;1" dur="6s" begin="3.1s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="170;170" keyTimes="0;1" dur="6s" begin="3.1s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- S4 gatekeeper -->
+  <g>
+    <circle cx="630" cy="170" r="18" fill="#1e293b" stroke="#fbbf24" stroke-width="2">
+      <animate attributeName="fill" values="#1e293b;#fbbf24;#1e293b" keyTimes="0;0.5;1" dur="6s" begin="4s" repeatCount="indefinite"/>
+    </circle>
+    <text x="630" y="175" text-anchor="middle" fill="#0b1220" font-size="14" font-weight="700">4</text>
+    <text x="630" y="212" text-anchor="middle" fill="#e2e8f0" font-size="12.5">Gatekeeper</text>
+    <text x="630" y="230" text-anchor="middle" fill="#64748b" font-size="10.5">human approves</text>
+  </g>
+
+  <!-- connector 4 -->
+  <line x1="686" y1="170" x2="786" y2="170" stroke="#334155" stroke-width="3"/>
+  <circle r="5" fill="#22c55e" filter="url(#glow)">
+    <animate attributeName="cx" values="686;786" keyTimes="0;1" dur="6s" begin="4.9s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="170;170" keyTimes="0;1" dur="6s" begin="4.9s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- S5 live -->
+  <g>
+    <circle cx="826" cy="170" r="18" fill="#052e16" stroke="#22c55e" stroke-width="2">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="1s" begin="5.6s" repeatCount="indefinite"/>
+    </circle>
+    <text x="826" y="175" text-anchor="middle" fill="#22c55e" font-size="14" font-weight="700">✓</text>
+    <text x="826" y="212" text-anchor="middle" fill="#e2e8f0" font-size="12.5">Live worker</text>
+    <text x="826" y="230" text-anchor="middle" fill="#4ade80" font-size="10.5">.workers.dev</text>
+  </g>
+
+  <!-- log lines (staggered, cycling) -->
+  <g font-size="11.5" fill="#94a3b8">
+    <text x="32" y="300" opacity="0">
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="6s" begin="0s" repeatCount="indefinite"/>
+      <tspan fill="#f6821f">$</tspan> npx wrangler login
+    </text>
+    <text x="32" y="322" opacity="0">
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="6s" begin="1s" repeatCount="indefinite"/>
+      <tspan fill="#f6821f">$</tspan> wrangler kv namespace create APPROVALS  →  id=605e09bc…
+    </text>
+    <text x="32" y="344" opacity="0">
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="6s" begin="2s" repeatCount="indefinite"/>
+      <tspan fill="#f6821f">✓</tspan> approve deploy → PUT api.cloudflare.com/…/zerohour
+    </text>
+    <text x="32" y="366" opacity="0">
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="6s" begin="3s" repeatCount="indefinite"/>
+      <tspan fill="#22c55e">✓</tspan> LIVE  https://zerohour.creatorplntu.workers.dev  →  {"app":"zero"}
+    </text>
+  </g>
+</svg>
