@@ -4,6 +4,7 @@ import { WorkspaceDO } from "./workspace.js";
 import type { Env } from "./types.js";
 import { createLogger } from "./logger.js";
 import * as gatekeeper from "./gatekeeper.js";
+import * as analytics from "./analytics.js";
 import { getNeuronBudget } from "./budget.js";
 
 const logger = createLogger("worker");
@@ -41,7 +42,20 @@ app.post("/api/chat", async (c) => {
   logger.info("Chat request received", { event: "chat.request", userId, promptLength: prompt.length });
 
   const ws = getWorkspaceStub(c.env, userId);
+  const startedAt = Date.now();
   const result = await ws.runAgentLoop(prompt);
+
+  await analytics.recordAgentRun(c.env.BUDGET, {
+    userId,
+    model: c.env.MODEL || "@cf/ibm-granite/granite-4.0-h-micro",
+    status: result.status,
+    promptLength: prompt.length,
+    iterations: result.iterations,
+    neuronsUsed: result.neuronsUsed,
+    filesWritten: result.filesWritten,
+    durationMs: Date.now() - startedAt,
+    startedAt,
+  });
 
   logger.info("Agent completed", { event: "chat.complete", status: result.status, iterations: result.iterations });
 
@@ -74,6 +88,15 @@ app.get("/api/file/*", async (c) => {
 app.get("/api/budget", async (c) => {
   const budget = await getNeuronBudget(c.env.BUDGET);
   return c.json(budget);
+});
+
+// ─── Agent Analytics ────────────────────────────────────────────────────────
+// Real per-task observability: neurons burned, iterations, files written,
+// duration latency, and per-day / per-model rollups (see src/analytics.ts).
+
+app.get("/api/analytics", async (c) => {
+  const days = Math.min(Math.max(parseInt(c.req.query("days") || "7", 10) || 7, 1), 30);
+  return c.json(await analytics.getAnalytics(c.env.BUDGET, days));
 });
 
 // ─── Deploy Gatekeeper API ──────────────────────────────────────────────────
@@ -139,6 +162,18 @@ app.get("/api/approvals/:deployId/logs", async (c) => {
   const deployId = c.req.param("deployId");
   const logs = await gatekeeper.getDeployLogs(c.env, deployId);
   return c.json(logs);
+});
+
+// Deploy code review: the exact file contents the agent generated for this
+// deploy, with a per-file verification verdict. This is what the human reviews
+// before approving — inspectable through the API and shown in the UI.
+app.get("/api/approvals/:deployId/files", async (c) => {
+  const deployId = c.req.param("deployId");
+  const review = await gatekeeper.getDeployReview(c.env, deployId);
+  if (!review) {
+    return c.json({ error: "Deploy not found" }, 404);
+  }
+  return c.json(review);
 });
 
 // Get deployed artifact (archive mode)

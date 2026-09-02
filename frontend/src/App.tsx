@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { Chat } from "./Chat.js";
 import { FileTree } from "./FileTree.js";
 import { ApprovalQueue } from "./ApprovalQueue.js";
+import { Analytics } from "./Analytics.js";
 
 interface AgentResult {
   status: string;
@@ -67,7 +68,7 @@ function BudgetMeter({ budget }: { budget: BudgetInfo | null }) {
 export default function App() {
   const [fileTreeRefresh, setFileTreeRefresh] = useState(0);
   const [lastResult, setLastResult] = useState<AgentResult | null>(null);
-  const [activeTab, setActiveTab] = useState<"chat" | "files" | "approvals">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "files" | "approvals" | "analytics">("chat");
   const { budget } = useBudget();
 
   const handleAgentResult = useCallback((result: AgentResult) => {
@@ -112,7 +113,7 @@ export default function App() {
         borderBottom: "1px solid #333",
         padding: "0 20px",
       }}>
-        {(["chat", "files", "approvals"] as const).map(tab => (
+        {(["chat", "files", "approvals", "analytics"] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -142,6 +143,9 @@ export default function App() {
         )}
         {activeTab === "approvals" && (
           <ApprovalQueue />
+        )}
+        {activeTab === "analytics" && (
+          <Analytics />
         )}
       </div>
 

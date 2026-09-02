@@ -12,6 +12,119 @@ interface Deployment {
   error?: string;
 }
 
+interface ReviewFile {
+  path: string;
+  content: string;
+  bytes: number;
+  isEntry: boolean;
+  verified: boolean;
+  issues: string[];
+}
+
+interface Review {
+  deployId: string;
+  projectName: string;
+  files: ReviewFile[];
+  totalBytes: number;
+  passes: number;
+  fails: number;
+}
+
+function ReviewPanel({ deploy }: { deploy: Deployment }) {
+  const [open, setOpen] = useState(false);
+  const [review, setReview] = useState<Review | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const toggle = async () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    if (!review) {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/approvals/${deploy.deployId}/files`);
+        if (res.ok) setReview(await res.json());
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <div style={{ marginTop: "12px" }}>
+      <button
+        onClick={toggle}
+        style={{
+          background: "none",
+          border: "1px solid #333",
+          borderRadius: 4,
+          color: "#888",
+          padding: "6px 12px",
+          fontSize: "11px",
+          cursor: "pointer",
+        }}
+      >
+        {open ? "Hide" : "Review"} generated code
+      </button>
+
+      {open && (
+        <div style={{ marginTop: "8px", fontSize: "12px" }}>
+          {loading && <div style={{ color: "#666" }}>Loading files...</div>}
+          {review && (
+            <>
+              <div style={{ color: "#888", marginBottom: "6px", fontSize: "11px" }}>
+                {review.files.length} files · {review.totalBytes} bytes · code review verification: {" "}
+                <span style={{ color: "#4ade80" }}>{review.passes} pass</span>
+                {review.fails > 0 && <span style={{ color: "#fca5a5" }}> · {review.fails} issue</span>}
+              </div>
+              {review.files.map(f => (
+                <div key={f.path} style={{
+                  background: "#0d0d0d",
+                  border: "1px solid #222",
+                  borderRadius: 6,
+                  marginBottom: "8px",
+                  overflow: "hidden",
+                }}>
+                  <div style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "6px 10px",
+                    fontSize: "11px",
+                    fontFamily: "monospace",
+                    color: f.isEntry ? "#f59e0b" : "#666",
+                  }}>
+                    <span>{f.path}{f.isEntry ? "  (entry)" : ""}</span>
+                    {f.verified
+                      ? <span style={{ color: "#4ade80" }}>✓ verified</span>
+                      : <span style={{ color: "#fca5a5" }}>⚠ {f.issues.join(", ")}</span>}
+                  </div>
+                  <pre style={{
+                    margin: 0,
+                    padding: "8px 10px",
+                    fontSize: "11px",
+                    lineHeight: 1.4,
+                    color: "#9ca3af",
+                    whiteSpace: "pre",
+                    overflowX: "auto",
+                    borderTop: "1px solid #1a1a1a",
+                    maxHeight: 200,
+                    overflowY: "auto",
+                  }}>{f.content}</pre>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ApprovalQueue() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -150,7 +263,9 @@ export function ApprovalQueue() {
           )}
 
           {deploy.status === "pending" && (
-            <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+            <div>
+              <ReviewPanel deploy={deploy} />
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
               <button
                 onClick={() => approve(deploy.deployId)}
                 style={{
@@ -182,6 +297,7 @@ export function ApprovalQueue() {
               >
                 Reject
               </button>
+              </div>
             </div>
           )}
         </div>

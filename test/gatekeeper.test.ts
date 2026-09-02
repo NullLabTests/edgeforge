@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { requestDeploy, approveDeploy, rejectDeploy, listDeployments, slugify } from "../src/gatekeeper.js";
+import { requestDeploy, approveDeploy, rejectDeploy, listDeployments, slugify, getDeployReview } from "../src/gatekeeper.js";
 import type { Env } from "../src/types.js";
 
 // ─── In-memory KV mock ───────────────────────────────────────────────────────
@@ -154,5 +154,32 @@ describe("rejectDeploy & listDeployments", () => {
     const src = await kvGet(env, `artifact:${dir}/src/index.ts`);
     expect(src).toBeDefined();
     expect(JSON.parse(src!).content).toContain('"hello"');
+  });
+});
+
+// ─── getDeployReview ─────────────────────────────────────────────────────────
+
+describe("getDeployReview", () => {
+  it("returns per-file content with verification and flags a broken entry", async () => {
+    const env = makeEnv();
+    const files = {
+      "/src/index.js": `export default { async fetch() { return new Response("hi"); } };`,
+      "/notes.txt": "unbalanced {{ braces",
+    };
+    const request = await requestDeploy(env, { projectName: "review", files });
+    const review = await getDeployReview(env, request.deployId);
+
+    expect(review).not.toBeNull();
+    expect(review!.files.length).toBe(2);
+    const entry = review!.files.find((f) => f.path === "/src/index.js");
+    expect(entry?.isEntry).toBe(true);
+    expect(entry?.verified).toBe(true);
+    expect(review!.passes).toBe(1);
+    expect(review!.fails).toBe(1);
+  });
+
+  it("returns null for a nonexistent deploy", async () => {
+    const env = makeEnv();
+    expect(await getDeployReview(env, "nope")).toBeNull();
   });
 });

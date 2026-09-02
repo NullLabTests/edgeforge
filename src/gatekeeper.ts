@@ -189,6 +189,87 @@ export async function getDeployLogs(env: Env, deployId: string): Promise<DeployA
   return JSON.parse(raw) as DeployActionLog[];
 }
 
+// ─── Code review for a pending deploy ───────────────────────────────────────
+// Returns the file snapshots the agent generated for this deploy, each with a
+// lightweight static verification verdict (balanced delimiters, entry-pointer
+// detection). Gives the human something concrete to review before approving.
+
+export interface FileReviewEntry {
+  path: string;
+  content: string;
+  bytes: number;
+  isEntry: boolean;
+  verified: boolean;
+  issues: string[];
+}
+
+export interface DeployReview {
+  deployId: string;
+  projectName: string;
+  files: FileReviewEntry[];
+  totalBytes: number;
+  passes: number;
+  fails: number;
+}
+
+const VERIFY_ENTRY_RE = /(?:export\s+default\s*(?:\{\s*async\s+fetch|\w+\s*=>)|addEventListener\(\s*["']fetch)/;
+
+function verifyFile(path: string, content: string): { verified: boolean; issues: string[]; isEntry: boolean } {
+  const issues: string[] = [];
+  const isEntry = ENTRY_CANDIDATES.includes(path);
+
+  // Balance delimiters (rough static check, mirrors exec-sim validation).
+  const stripped = content.replace(/"[^"]*"/g, "").replace(/\/\/.*$/g, "");
+  let braces = 0, brackets = 0, parens = 0;
+  for (const ch of stripped) {
+    if (ch === "{") braces++;
+    else if (ch === "}") braces--;
+    else if (ch === "[") brackets++;
+    else if (ch === "]") brackets--;
+    else if (ch === "(") parens++;
+    else if (ch === ")") parens--;
+  }
+  if (braces !== 0) issues.push(`unbalanced braces (${Math.abs(braces)})`);
+  if (brackets !== 0) issues.push(`unbalanced brackets (${Math.abs(brackets)})`);
+  if (parens !== 0) issues.push(`unbalanced parens (${Math.abs(parens)})`);
+
+  // For a deployable entry, expect a Worker fetch handler.
+  const jsEntry = path.endsWith(".js") || path.endsWith(".mjs");
+  if (isEntry && jsEntry && !VERIFY_ENTRY_RE.test(content)) {
+    issues.push("entry has no export default fetch() / fetch listener — deploy may be rejected (10068)");
+  }
+
+  return { verified: issues.length === 0, issues, isEntry };
+}
+
+export async function getDeployReview(env: Env, deployId: string): Promise<DeployReview | null> {
+  const raw = await env.APPROVALS.get(`deploy:${deployId}`);
+  if (!raw) return null;
+
+  const pending = JSON.parse(raw) as DeployStatus & { files?: Record<string, string> };
+  const files = pending.files || {};
+  const entries: FileReviewEntry[] = [];
+  let totalBytes = 0, passes = 0, fails = 0;
+
+  for (const [path, content] of Object.entries(files)) {
+    const v = verifyFile(path, content);
+    totalBytes += content.length;
+    if (v.verified) passes++; else fails++;
+    entries.push({ path, content, bytes: content.length, isEntry: v.isEntry, verified: v.verified, issues: v.issues });
+  }
+
+  entries.sort((a, b) => (b.isEntry ? 1 : 0) - (a.isEntry ? 1 : 0) || a.path.localeCompare(b.path));
+
+  return {
+    deployId,
+    projectName: pending.projectName,
+    files: entries,
+    totalBytes,
+    passes,
+    fails,
+  };
+}
+
 // ─── Real deploy helper ─────────────────────────────────────────────────────
 
 const ENTRY_CANDIDATES = ["/src/index.ts", "/src/index.js", "/index.ts", "/index.js"];

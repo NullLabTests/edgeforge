@@ -1,0 +1,2 @@
+# Track walkthrough videos with Git LFS so the repo stays light
+docs/video/*.mp4 filter=lfs diff=lfs merge=lfs -text

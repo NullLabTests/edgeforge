@@ -17,6 +17,33 @@
 
 ---
 
+## Video walkthrough
+
+Recorded against the **live** instance — a fresh browser session, real agent runs on
+Workers AI, the approval queue, a real Gatekeeper upload, and the resulting live URL.
+Both takes use the **same prompt**; only the model differs.
+
+<p align="center">
+  <video src="docs/video/edgeforge-walkthrough-granite.mp4" controls width="90%"></video>
+  <br/>
+  <em>Granite 4.0 Micro — deploys <code>videodemo.creatorplntu.workers.dev</code></em>
+</p>
+
+<p align="center">
+  <video src="docs/video/edgeforge-walkthrough-qwen.mp4" controls width="90%"></video>
+  <br/>
+  <em>Qwen3 30B (A3B, FP8) — deploys <code>qwen-demo.creatorplntu.workers.dev</code></em>
+</p>
+
+Each clip: boot the UI → type the prompt → watch the agent work (`wrangler tail` in a side
+panel) → review the file tree → review the approval queue → click **Approve** → the new
+Worker is reachable at its `workers.dev` URL.
+
+*The model is configurable via the `MODEL` variable on the Worker
+(`@cf/ibm-granite/granite-4.0-h-micro` default, `@cf/qwen/qwen3-30b-a3b-fp8` verified).*
+
+---
+
 ## Trademark & attribution
 
 **Cloudflare** and the **Cloudflare logo** are trademarks or registered trademarks of
@@ -47,9 +74,7 @@ approval in the middle:
 </p>
 
 *If your viewer doesn't animate SVG, open [`docs/edgeforge-demo.svg`](docs/edgeforge-demo.svg)
-directly — or watch the recorded end-to-end walkthroughs
-([Granite](docs/video/edgeforge-walkthrough-granite.mp4) ·
-[Qwen3-30B](docs/video/edgeforge-walkthrough-qwen.mp4)).*
+directly — or scroll up and press play on the recorded walkthroughs.*
 
 ---
 
@@ -130,7 +155,7 @@ videos below show it happen end to end.
 | **Gatekeeper** | The only path from the sandbox to your account. Agent can *request*; a human must *approve* | **KV** (queue + immutable audit log) + **Workers Upload API** |
 | **Budget** | A daily neuron ledger so the agent self-limits | **KV** (10,000 neurons/day free allowance, 500 reserve) |
 | **Verify step** | Static-analysis checks (`exec`) instead of a shell | no containers on free tier — transparent trade-off |
-| **UI** | Chat, file tree, approval queue, budget meter | **Workers Static Assets** (built `frontend/dist`) |
+| **UI** | Chat, file tree, live code-review panel, approval queue, budget meter, analytics tab | **Workers Static Assets** (built `frontend/dist`) |
 
 ### The deploy path is real
 
@@ -252,18 +277,19 @@ edgeforge/
 │   ├── workspace.ts      # WorkspaceDO: @cloudflare/computer FS + agent entry (SQLite)
 │   ├── agent.ts          # tool-calling loop over Workers AI + offline fallback
 │   ├── tools.ts          # tool defs + execution (write/read/edit/ls/find/grep/delete/exec/deploy)
-│   ├── gatekeeper.ts     # Deploy Gatekeeper: queue, real upload, audit log, artifacts
+│   ├── gatekeeper.ts     # Deploy Gatekeeper: queue, real upload, audit log, code review
+│   ├── analytics.ts      # per-run spend/effort ledger + daily/model rollups (KV)
 │   ├── budget.ts         # daily neuron ledger (KV)
 │   ├── exec-sim.ts       # static-analysis verify pass (no shell, no containers)
 │   ├── fs-helpers.ts / logger.ts / types.ts
-├── frontend/             # React + Vite UI (chat, file tree, approval queue, budget)
+├── frontend/             # React + Vite UI (chat, file tree, approval queue, analytics)
 ├── blueprints/ai-dev-sandbox/   # reusable Cloudflare blueprint (gadget template)
 ├── packages/gatekeeper-deploy/  # standalone Deploy Gatekeeper Worker (/rpc/*)
 ├── docs/
 │   ├── edgeforge-demo.svg      # animated pipeline diagram
 │   ├── cloudflare-logo.svg     # official logo (see Trademark & attribution)
 │   └── video/                  # walkthrough MP4s (Granite + Qwen3-30B takes)
-├── test/                 # Vitest (26 tests)
+├── test/                 # Vitest (30 tests)
 └── wrangler.toml         # worker config: DO, AI, KV, assets, subdomain
 ```
 
@@ -290,32 +316,10 @@ for enterprise conversations. Everything else runs unmodified on a free account 
 ## Tests
 
 ```bash
-npx vitest run        # 26 passing: agent, budget, gatekeeper, exec engine, blueprint
+npx vitest run        # 30 passing: agent, budget, gatekeeper (incl. code review), analytics, exec engine, blueprint
 npx tsc --noEmit      # type-clean
 npx wrangler deploy --dry-run   # bundle check for the platform worker
 ```
-
----
-
-## Video walkthrough
-
-Recorded against the **live** instance — a fresh browser session, real agent runs on
-Workers AI, the approval queue, a real Gatekeeper upload, and the resulting live URL.
-Both takes use the **same prompt**; only the model differs.
-
-- **Granite 4.0 Micro** →
-  [`docs/video/edgeforge-walkthrough-granite.mp4`](docs/video/edgeforge-walkthrough-granite.mp4)
-  *(deploys `videodemo.creatorplntu.workers.dev`)*
-- **Qwen3 30B (A3B, FP8)** →
-  [`docs/video/edgeforge-walkthrough-qwen.mp4`](docs/video/edgeforge-walkthrough-qwen.mp4)
-  *(deploys `qwen-demo.creatorplntu.workers.dev`)*
-
-Each clip: boot the UI → type the prompt → watch the agent work (`wrangler tail` in a side
-panel) → review the file tree → review the approval queue → click **Approve** → the new
-Worker is reachable at its `workers.dev` URL.
-
-*The model is configurable via the `MODEL` variable on the Worker
-(`@cf/ibm-granite/granite-4.0-h-micro` default, `@cf/qwen/qwen3-30b-a3b-fp8` verified).*
 
 ---
 
