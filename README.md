@@ -1,5 +1,13 @@
 <p align="center">
   <img src="docs/cloudflare-logo.svg" alt="Cloudflare logo" width="240"/>
+
+https://github.com/user-attachments/assets/0c17a05b-5475-400f-98f9-50e004459b33
+
+
+
+https://github.com/user-attachments/assets/64a95d53-7286-4067-bf56-2912be381970
+
+
 </p>
 
 <div align="center">
@@ -23,17 +31,30 @@ Recorded against the **live** instance — a fresh browser session, real agent r
 Workers AI, the approval queue, a real Gatekeeper upload, and the resulting live URL.
 Both takes use the **same prompt**; only the model differs.
 
+
+
+
+
+
+
+
+
+
 <p align="center">
   <video src="docs/video/edgeforge-walkthrough-granite.mp4" controls width="90%"></video>
   <br/>
   <em>Granite 4.0 Micro — deploys <code>videodemo.creatorplntu.workers.dev</code></em>
 </p>
 
+https://github.com/user-attachments/assets/4ef684c3-f014-4135-a0c3-758f640fb051
+
 <p align="center">
   <video src="docs/video/edgeforge-walkthrough-qwen.mp4" controls width="90%"></video>
   <br/>
   <em>Qwen3 30B (A3B, FP8) — deploys <code>qwen-demo.creatorplntu.workers.dev</code></em>
 </p>
+
+https://github.com/user-attachments/assets/4da63f2a-0156-4b20-bdcc-6682ea3e1981
 
 Each clip: boot the UI → type the prompt → watch the agent work (`wrangler tail` in a side
 panel) → review the file tree → review the approval queue → click **Approve** → the new
