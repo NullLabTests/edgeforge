@@ -246,13 +246,20 @@ export async function executeTool(
         const projectName = call.arguments.projectName as string || "my-worker";
         const files = await collectAllFiles(workspace, "/");
         const request = await gatekeeperRequestDeploy(env, { projectName, files, requestedBy: "agent" });
+        const boot = request.bootTest;
+        const bootSummary = !boot || boot.status === "skipped"
+          ? "no live boot test run (no Cloudflare credentials on this deployment)."
+          : boot.status === "pass"
+            ? `LIVE BOOT TEST PASSED — preview URL ${boot.previewUrl} answered HTTP ${boot.httpStatus} in ${boot.latencyMs}ms.`
+            : `LIVE BOOT TEST FAILED — the artifact was deployed to preview URL ${boot.previewUrl} but ${boot.error}. This is a REAL runtime failure. Fix the code, re-run tests via exec(), then call deploy() again.`;
         content = JSON.stringify({
           success: true,
-          message: `Deploy request ${request.deployId} queued for user approval. The agent keeps working; the deploy is applied only after a human approves in the UI. Live URL will be ${request.simulatedUrl}.`,
+          message: `Deploy request ${request.deployId} queued for user approval. ${bootSummary} The agent keeps working; the deploy is applied only after a human approves in the UI.`,
           deployId: request.deployId,
           projectName: request.projectName,
           fileCount: request.fileCount,
           simulatedUrl: request.simulatedUrl,
+          bootTest: boot,
         });
         break;
       }

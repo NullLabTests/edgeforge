@@ -10,6 +10,25 @@ interface Deployment {
   deployedUrl?: string;
   deployMode?: "real" | "archive";
   error?: string;
+  bootTest?: {
+    status: "pass" | "fail" | "skipped";
+    reason?: string;
+    previewUrl?: string;
+    httpStatus?: number;
+    latencyMs?: number;
+    bodySnippet?: string;
+    error?: string;
+    checkedAt?: number;
+  };
+  liveCheck?: {
+    ok: boolean;
+    httpStatus?: number;
+    latencyMs?: number;
+    bodySnippet?: string;
+    error?: string;
+    checkedAt?: number;
+  };
+  d1?: { databaseId: string; databaseName: string };
 }
 
 interface ReviewFile {
@@ -121,6 +140,119 @@ function ReviewPanel({ deploy }: { deploy: Deployment }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function BootResult({ deploy }: { deploy: Deployment }) {
+  const boot = deploy.bootTest;
+  if (!boot) return null;
+
+  if (boot.status === "skipped") {
+    return (
+      <div style={{
+        marginTop: "8px",
+        padding: "8px 12px",
+        background: "#111827",
+        border: "1px solid #333",
+        borderRadius: "4px",
+        fontSize: "11px",
+        color: "#9ca3af",
+      }}>
+        Boot test: <span style={{ color: "#9ca3af" }}>skipped</span> — {boot.reason === "no-token" ? "no Cloudflare credentials on this Worker" : "no deployable entry"}
+        {deploy.deployMode === "archive" && " · will be packaged as an archive"}
+      </div>
+    );
+  }
+
+  const passed = boot.status === "pass";
+  return (
+    <div style={{
+      marginTop: "8px",
+      padding: "8px 12px",
+      background: passed ? "#0a2e0a" : "#2a0a0a",
+      border: `1px solid ${passed ? "#1a4a1a" : "#7f1d1d"}`,
+      borderRadius: "4px",
+      fontSize: "11px",
+    }}>
+      <div style={{ color: passed ? "#4ade80" : "#fca5a5", fontWeight: 600 }}>
+        Live boot test: {passed ? "PASSED" : "FAILED"}
+        {boot.httpStatus != null && ` · HTTP ${boot.httpStatus}`}
+        {boot.latencyMs != null && ` · ${boot.latencyMs}ms`}
+      </div>
+      {boot.previewUrl && (
+        <div style={{ color: passed ? "#4ade80" : "#fca5a5", marginTop: "4px", wordBreak: "break-all" }}>
+          Preview: <a href={boot.previewUrl} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>{boot.previewUrl}</a>
+        </div>
+      )}
+      {boot.error && <div style={{ color: "#fca5a5", marginTop: "4px" }}>{boot.error}</div>}
+      {boot.bodySnippet && (
+        <pre style={{
+          margin: "6px 0 0 0",
+          padding: "6px 8px",
+          background: "#000",
+          borderRadius: 4,
+          fontSize: "10px",
+          color: "#9ca3af",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          maxHeight: 120,
+          overflowY: "auto",
+        }}>{boot.bodySnippet}</pre>
+      )}
+    </div>
+  );
+}
+
+function LiveCheckBadge({ deploy }: { deploy: Deployment }) {
+  const check = deploy.liveCheck;
+  if (!check) return null;
+  const ok = check.ok;
+  return (
+    <div style={{
+      marginTop: "8px",
+      padding: "8px 12px",
+      background: ok ? "#0a2e0a" : "#2a0a0a",
+      border: `1px solid ${ok ? "#1a4a1a" : "#7f1d1d"}`,
+      borderRadius: "4px",
+      fontSize: "11px",
+      color: ok ? "#4ade80" : "#fca5a5",
+    }}>
+      {ok
+        ? `Verified live · HTTP ${check.httpStatus ?? "?"} · ${check.latencyMs ?? "?"}ms`
+        : `Live check failed${check.error ? `: ${check.error}` : ""}`}
+      {check.bodySnippet && (
+        <pre style={{
+          margin: "6px 0 0 0",
+          padding: "6px 8px",
+          background: "#000",
+          borderRadius: 4,
+          fontSize: "10px",
+          color: "#9ca3af",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          maxHeight: 120,
+          overflowY: "auto",
+        }}>{check.bodySnippet}</pre>
+      )}
+    </div>
+  );
+}
+
+function D1Badge({ deploy }: { deploy: Deployment }) {
+  if (!deploy.d1) return null;
+  return (
+    <div style={{
+      marginTop: "8px",
+      padding: "8px 12px",
+      background: "#0c1a2a",
+      border: "1px solid #1e3a5f",
+      borderRadius: "4px",
+      fontSize: "11px",
+      color: "#7dd3fc",
+    }}>
+      D1 backing store bound as <span style={{ fontFamily: "monospace" }}>GADGET_DB</span>
+      <span style={{ color: "#38bdf8" }}> · {deploy.d1.databaseName}</span>
     </div>
   );
 }
@@ -246,6 +378,8 @@ export function ApprovalQueue() {
             </div>
           )}
 
+          {deploy.status === "pending" && <BootResult deploy={deploy} />}
+
           {deploy.deployedUrl && (
             <div style={{
               marginTop: "8px",
@@ -261,6 +395,9 @@ export function ApprovalQueue() {
               </a>
             </div>
           )}
+
+          <LiveCheckBadge deploy={deploy} />
+          <D1Badge deploy={deploy} />
 
           {deploy.status === "pending" && (
             <div>

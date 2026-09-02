@@ -18,8 +18,9 @@
 // secrets aren't present, the Gatekeeper degrades gracefully to a packaged
 // "archive" deployment so the end-to-end flow still works without a token.
 
-import type { Env, DeployRequest, DeployStatus, DeployActionLog, DeployMode } from "./types.js";
+import type { Env, DeployRequest, DeployStatus, DeployActionLog, DeployMode, BootTest, LiveCheck, GadgetD1 } from "./types.js";
 import { createLogger } from "./logger.js";
+import { provisionGadgetD1, bindGadgetD1 } from "./d1.js";
 
 const logger = createLogger("gatekeeper");
 
@@ -27,6 +28,100 @@ const DEPLOY_TTL = 86400 * 7; // approvals & artifacts live 7 days
 const LOG_CAP = 30;
 
 // ─── Request ────────────────────────────────────────────────────────────────
+
+// Real boot test: deploy the exact artifact to a throwaway `<project>-preview`
+// script on the account's free tier, then fetch its live URL and record the
+// actual HTTP outcome. The URL answered → the artifact boots on the real
+// platform; that is the strongest verification available on free tier.
+async function runBootTest(env: Env, projectName: string, deployId: string, files: Record<string, string>): Promise<BootTest> {
+  const checkedAt = Date.now();
+
+  if (!env.CF_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
+    return { status: "skipped", reason: "no-token", checkedAt };
+  }
+  if (!ENTRY_CANDIDATES.some((p) => typeof files[p] === "string")) {
+    return { status: "skipped", reason: "no-entry", checkedAt };
+  }
+
+  const previewName = `${projectName}-preview`.slice(0, 40);
+  const attempt = await tryUploadWorkersScript(env, previewName, files);
+  if (!attempt.success || !attempt.url) {
+    return {
+      status: "fail",
+      previewName,
+      reason: "upload-failed",
+      error: attempt.error || "preview upload failed",
+      checkedAt,
+    };
+  }
+
+  // Give subdomain routing a moment, then fetch the live URL.
+  await new Promise((r) => setTimeout(r, 1500));
+  const probe = await checkLiveUrl(attempt.url);
+
+  return {
+    status: probe.ok ? "pass" : "fail",
+    previewName,
+    previewUrl: attempt.url,
+    httpStatus: probe.httpStatus,
+    latencyMs: probe.latencyMs,
+    bodySnippet: probe.bodySnippet,
+    error: probe.ok ? undefined : probe.error || `HTTP ${probe.httpStatus}`,
+    reason: probe.ok ? undefined : "http",
+    checkedAt: Date.now(),
+  };
+}
+
+// One real fetch against a live URL with latency + first-200-bytes body.
+// `ok` means the request was served (2xx–4xx is a real response; 5xx and edge
+// timeouts mean the worker failed to boot or crashed).
+async function checkLiveUrl(url: string): Promise<{
+  ok: boolean;
+  httpStatus?: number;
+  latencyMs?: number;
+  bodySnippet?: string;
+  error?: string;
+  checkedAt: number;
+}> {
+  const checkedAt = Date.now();
+  const started = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  } catch (err) {
+    return {
+      ok: false,
+      latencyMs: Date.now() - started,
+      error: `request failed: ${err instanceof Error ? err.message : String(err)}`,
+      checkedAt,
+    };
+  }
+  const latencyMs = Date.now() - started;
+  const text = await res.text().catch(() => "");
+  const bodySnippet = text.slice(0, 200);
+  return {
+    ok: res.status < 500,
+    httpStatus: res.status,
+    latencyMs,
+    bodySnippet,
+    error: res.status >= 500 ? `worker returned HTTP ${res.status}` : undefined,
+    checkedAt,
+  };
+}
+
+async function deleteWorkersScript(env: Env, scriptName: string): Promise<void> {
+  if (!env.CF_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) return;
+  try {
+    await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(env.CF_ACCOUNT_ID)}/workers/scripts/${encodeURIComponent(scriptName)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } },
+    );
+  } catch {
+    // non-fatal cleanup
+  }
+}
+
+// ─── Approve ────────────────────────────────────────────────────────────────
 
 export async function requestDeploy(
   env: Env,
@@ -45,6 +140,14 @@ export async function requestDeploy(
     simulatedUrl: `https://${projectName}.${env.CF_ACCOUNT_SUBDOMAIN || "<your-subdomain>"}.workers.dev`,
   };
 
+  // REAL pre-approval boot test: preview-deploy the exact artifact, fetch the
+  // live preview URL, and record the actual HTTP result. This is the closest
+  // the free tier gets to "npm test" — the artifact is booted on the real
+  // platform before any human approves it. Degrades to `skipped` when no
+  // Cloudflare credentials are configured (static review covers the gap).
+  const bootTest = await runBootTest(env, projectName, deployId, input.files);
+  request.bootTest = bootTest;
+
   await env.APPROVALS.put(`deploy:${deployId}`, JSON.stringify({ ...request, files: input.files }), {
     expirationTtl: DEPLOY_TTL,
   });
@@ -53,11 +156,15 @@ export async function requestDeploy(
     type: "deploy.request",
     deployId,
     projectName,
-    detail: `queued ${request.fileCount} file(s) for human approval`,
+    detail: bootTest.status === "pass"
+      ? `queued ${request.fileCount} file(s) — live boot test PASSED (${bootTest.httpStatus} in ${bootTest.latencyMs}ms)`
+      : bootTest.status === "fail"
+        ? `queued ${request.fileCount} file(s) — live boot test FAILED (${bootTest.error || bootTest.httpStatus})`
+        : `queued ${request.fileCount} file(s) for human approval`,
     timestamp: Date.now(),
   });
 
-  logger.info("Deploy requested", { event: "gatekeeper.request", deployId, projectName, fileCount: request.fileCount });
+  logger.info("Deploy requested", { event: "gatekeeper.request", deployId, projectName, fileCount: request.fileCount, boot: bootTest.status });
   return request;
 }
 
@@ -88,11 +195,31 @@ export async function approveDeploy(
   let deployedUrl: string | undefined;
   let error: string | undefined;
   let deployMode: DeployMode = "archive";
+  let liveCheck: LiveCheck | undefined;
+  let d1: GadgetD1 | undefined;
 
   if (attempt.success && attempt.url) {
     status = "deployed";
     deployedUrl = attempt.url;
     deployMode = "real";
+
+    // Prove the promoted URL actually answers: one real fetch against the live
+    // workers.dev URL. This is the "we booted it" evidence for the audit log.
+    liveCheck = await checkLiveUrl(attempt.url);
+
+    // Real per-gadget state: provision a dedicated D1 database and bind it as
+    // GADGET_DB. Best-effort — if D1 provisioning fails the deploy still works,
+    // it just falls back to in-worker state.
+    const db = await provisionGadgetD1(env, pending.projectName);
+    if (db) {
+      const bound = await bindGadgetD1(env, pending.projectName, db);
+      if (bound) d1 = db;
+    }
+
+    // The preview artifact has served its purpose; don't leave stale scripts.
+    if (pending.bootTest?.previewName) {
+      await deleteWorkersScript(env, pending.bootTest.previewName);
+    }
   } else if (attempt.reason === "token") {
     // No Cloudflare credentials configured — package the project as browsable
     // artifacts (R2 if bound, otherwise KV) so the flow stays verifiable.
@@ -112,6 +239,8 @@ export async function approveDeploy(
     deployedAt: status === "deployed" ? Date.now() : pending.deployedAt,
     deployedUrl,
     deployMode,
+    liveCheck,
+    d1,
     error,
   };
   delete (deploy as { files?: Record<string, string> }).files;
@@ -154,6 +283,11 @@ export async function rejectDeploy(env: Env, deployId: string): Promise<DeploySt
   deploy.status = "rejected";
   deploy.rejectedAt = Date.now();
   delete (deploy as { files?: Record<string, string> }).files;
+
+  // The rejected preview no longer needs to exist on the account.
+  if (deploy.bootTest?.previewName) {
+    await deleteWorkersScript(env, deploy.bootTest.previewName);
+  }
 
   await env.APPROVALS.put(`deploy:${deployId}`, JSON.stringify(deploy), { expirationTtl: 86400 });
 

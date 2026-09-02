@@ -41,6 +41,11 @@ id = "7d7ebe28874743588b71c1641ddfe73d"
 directory = "frontend/dist"
 binding = "ASSETS"
 
+# Cron trigger: midnight UTC budget rollover archives the previous day's neuron
+# spend into the history ledger so the free-tier 10K/day counter restarts clean.
+[triggers]
+crons = ["0 0 * * *"]
+
 # ── Real (not simulated) deploys ──────────────────────────────────────────────
 # Approvals are turned into LIVE workers via the Workers Upload API. The
 # subdomain below is from this account (`wrangler login` → Workers API).

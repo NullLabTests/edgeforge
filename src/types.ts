@@ -102,6 +102,7 @@ export interface DeployRequest {
   createdAt: number;
   requestedBy?: string;
   simulatedUrl: string;
+  bootTest?: BootTest;
 }
 
 export interface DeployStatus extends DeployRequest {
@@ -111,6 +112,43 @@ export interface DeployStatus extends DeployRequest {
   deployMode?: DeployMode;
   rejectedAt?: number;
   error?: string;
+  liveCheck?: LiveCheck;
+  d1?: GadgetD1;
+}
+
+// A REAL pre-approval boot test: the Gatekeeper preview-deploys the exact
+// artifact it will promote, then fetches the live preview URL and records the
+// actual HTTP result. This replaces "trust the static check" with "we booted
+// it on the real platform before you approved it." Runs only when the account
+// has Workers credentials configured; otherwise it degrades to the static
+// review (reason: "no-token").
+export interface BootTest {
+  status: "pass" | "fail" | "skipped";
+  reason?: "no-token" | "no-entry" | "upload-failed" | "http";
+  previewName?: string;
+  previewUrl?: string;
+  httpStatus?: number;
+  latencyMs?: number;
+  bodySnippet?: string;
+  error?: string;
+  checkedAt: number;
+}
+
+// Post-promotion proof: the live workers.dev URL was fetched once and answered.
+export interface LiveCheck {
+  ok: boolean;
+  httpStatus?: number;
+  latencyMs?: number;
+  bodySnippet?: string;
+  error?: string;
+  checkedAt: number;
+}
+
+// Real per-gadget state: a dedicated D1 database, bound to the live Worker
+// (binding name GADGET_DB). D1's free tier is no-card, like the rest.
+export interface GadgetD1 {
+  databaseId: string;
+  databaseName: string;
 }
 
 export interface DeployActionLog {

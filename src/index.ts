@@ -5,7 +5,7 @@ import type { Env } from "./types.js";
 import { createLogger } from "./logger.js";
 import * as gatekeeper from "./gatekeeper.js";
 import * as analytics from "./analytics.js";
-import { getNeuronBudget } from "./budget.js";
+import { getNeuronBudget, rolloverBudget } from "./budget.js";
 
 const logger = createLogger("worker");
 
@@ -88,6 +88,12 @@ app.get("/api/file/*", async (c) => {
 app.get("/api/budget", async (c) => {
   const budget = await getNeuronBudget(c.env.BUDGET);
   return c.json(budget);
+});
+
+// Daily rollover history (the cron trigger at midnight UTC archives each day's
+// spend; see rolloverBudget in src/budget.ts and [triggers] in wrangler.toml).
+app.get("/api/budget/history", async (c) => {
+  return c.json(await rolloverBudget(c.env.BUDGET));
 });
 
 // ─── Agent Analytics ────────────────────────────────────────────────────────
@@ -233,7 +239,17 @@ async function collectFilesFromTree(env: Env, userId: string, tree: TreeNode[], 
 
 // ─── Export ─────────────────────────────────────────────────────────────────
 
-export default app;
+// The module entry also listens for the Cron Trigger (wrangler.toml [triggers]):
+// every midnight UTC it archives the previous day's neuron spend into the
+// budget history ledger, so the free-tier 10K/day counter restarts clean.
+export default {
+  fetch: app.fetch,
+  scheduled: async (_controller: ScheduledController, env: Env, _ctx: ExecutionContext) => {
+    logger.info("Budget rollover triggered", { event: "scheduled.rollover" });
+    const history = await rolloverBudget(env.BUDGET);
+    logger.info("Budget rollover complete", { event: "scheduled.rollover.done", archivedDays: history.length });
+  },
+};
 
 // Re-export the Durable Object class
 export { WorkspaceDO } from "./workspace.js";

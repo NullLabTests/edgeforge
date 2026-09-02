@@ -51,3 +51,48 @@ export async function canRunTask(kv: KVNamespace, maxIterations: number): Promis
   const budget = await getNeuronBudget(kv);
   return budget.remaining >= estimateTaskNeurons(maxIterations);
 }
+
+// ─── Daily rollover & history ────────────────────────────────────────────────
+// A cron trigger (midnight UTC, see wrangler.toml [triggers]) archives any past
+// days still sitting in KV into a permanent rollup and clears them, so the
+// after-midnight counter starts at zero even before the KV TTL fires.
+
+const HISTORY_KEY = "budget:history";
+const HISTORY_CAP = 30;
+
+export interface BudgetHistoryEntry {
+  date: string; // YYYY-MM-DD
+  used: number;
+  limit: number;
+}
+
+export async function rolloverBudget(kv: KVNamespace, now: Date = new Date()): Promise<BudgetHistoryEntry[]> {
+  const today = now.toISOString().slice(0, 10);
+  const listing = await kv.list({ prefix: "budget:" });
+
+  const archival: BudgetHistoryEntry[] = [];
+  for (const key of listing.keys) {
+    const date = key.name.slice("budget:".length);
+    if (date >= today) continue; // the live counter for today stays put
+    const raw = await kv.get(key.name);
+    const used = parseInt(raw || "0", 10);
+    if (Number.isFinite(used) && used > 0) {
+      archival.push({ date, used, limit: DAILY_NEURON_LIMIT });
+    }
+    await kv.delete(key.name); // stale — the KV TTL would clear it anyway
+  }
+
+  if (archival.length === 0) return getBudgetHistory(kv);
+
+  const previous = JSON.parse((await kv.get(HISTORY_KEY)) || "[]") as BudgetHistoryEntry[];
+  const merged = [...previous, ...archival]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-HISTORY_CAP);
+  await kv.put(HISTORY_KEY, JSON.stringify(merged));
+  return merged;
+}
+
+export async function getBudgetHistory(kv: KVNamespace): Promise<BudgetHistoryEntry[]> {
+  const raw = await kv.get(HISTORY_KEY);
+  return raw ? (JSON.parse(raw) as BudgetHistoryEntry[]) : [];
+}
